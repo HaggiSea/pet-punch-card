@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabaseClient';
 import { useEffect, useState } from 'react';
+import React from 'react';
 
 interface ParentDashboardProps {
   profile: any;
@@ -21,6 +22,66 @@ interface Task {
   is_active: boolean;
 }
 
+interface PendingRequest {
+  id: string;
+  child_id: string;
+  task_id: string;
+  points: number;
+  status: string;
+  children?: { name: string };
+  tasks?: { name: string; points: number };
+}
+
+interface TodayCheckIn {
+  task_name: string;
+  points: number;
+  check_in_date: string;
+}
+
+interface TodayRedemption {
+  reward_name: string;
+  points_cost: number;
+  status: string;
+  confirmed_at?: string;
+}
+
+interface HeatmapData {
+  date: string;
+  count: number;
+}
+
+// 热力图单元格组件
+function HeatmapCell({ date, count }: { date: string; count: number }) {
+  const [showTooltip, setShowTooltip] = useState(false);
+  
+  const getColor = () => {
+    if (count === 0) return 'bg-gray-100 hover:bg-gray-200';
+    if (count <= 2) return 'bg-green-200 hover:bg-green-300';
+    if (count <= 4) return 'bg-green-400 hover:bg-green-500';
+    if (count <= 6) return 'bg-green-600 hover:bg-green-700';
+    return 'bg-green-800 hover:bg-green-900';
+  };
+
+  const formatDate = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return `${d.getMonth() + 1}月${d.getDate()}日`;
+  };
+
+  return (
+    <div
+      className={`aspect-square rounded ${getColor()} transition-all hover:scale-110 hover:shadow-lg cursor-default relative`}
+      onMouseEnter={() => setShowTooltip(true)}
+      onMouseLeave={() => setShowTooltip(false)}
+    >
+      {showTooltip && (
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap z-10 shadow-lg">
+          {formatDate(date)}: {count} 次打卡
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ParentDashboard({ profile }: ParentDashboardProps) {
   const [children, setChildren] = useState<Child[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -28,40 +89,384 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
   const [selectedTask, setSelectedTask] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
+  const [pendingRedemptions, setPendingRedemptions] = useState<any[]>([]);
+  const [todayCheckIns, setTodayCheckIns] = useState<TodayCheckIn[]>([]);
+  const [todayRedemptions, setTodayRedemptions] = useState<TodayRedemption[]>([]);
+  const [selectedChildForDetail, setSelectedChildForDetail] = useState<string>('');
+  const [redemptions, setRedemptions] = useState<any[]>([]);
+  const [heatmapData, setHeatmapData] = useState<HeatmapData[]>([]);
+  const [heatmapMonth, setHeatmapMonth] = useState<Date>(new Date());
 
-  // 加载孩子列表和任务列表
   useEffect(() => {
     fetchChildren();
     fetchTasks();
+    fetchPendingRequests();
+    fetchPendingRedemptions();
+    fetchAllRedemptions();
   }, []);
+
+  useEffect(() => {
+    if (selectedChildForDetail) {
+      fetchTodayCheckIns(selectedChildForDetail);
+      fetchTodayRedemptions(selectedChildForDetail);
+      fetchHeatmapData(selectedChildForDetail);
+    }
+  }, [selectedChildForDetail, heatmapMonth]);
 
   async function fetchChildren() {
     const { data: _data, error } = await supabase
-        .from('children')
-        .select('*')
-        .eq('family_id', profile.id);
+      .from('children')
+      .select('*');
+
     if (error) {
-        console.error('获取孩子列表失败:', error);
+      console.error('❌ 获取孩子列表失败:', error);
     } else {
-        setChildren(_data || []);
-        if (_data && _data.length > 0) setSelectedChild(_data[0].id);
+      console.log('✅ 找到孩子:', _data);
+      setChildren(_data || []);
+      if (_data && _data.length > 0) {
+        setSelectedChild(_data[0].id);
+        setSelectedChildForDetail(_data[0].id);
+      }
     }
-    }
+  }
 
   async function fetchTasks() {
     const { data: _data, error } = await supabase
-        .from('tasks')
-        .select('*')
-        .eq('family_id', profile.id)
-        .eq('is_active', true);
+      .from('tasks')
+      .select('*')
+      .eq('is_active', true);
     if (error) {
-        console.error('获取任务列表失败:', error);
+      console.error('获取任务列表失败:', error);
     } else {
-        setTasks(_data || []);
-        if (_data && _data.length > 0) setSelectedTask(_data[0].id);
+      setTasks(_data || []);
+      if (_data && _data.length > 0) setSelectedTask(_data[0].id);
     }
   }
-  // 添加新任务
+
+  async function fetchPendingRequests() {
+    const { data, error } = await supabase
+      .from('check_in_requests')
+      .select('*, children(name), tasks(name, points)')
+      .eq('status', 'pending');
+    if (error) {
+      console.error('获取待审批申请失败:', error);
+    } else {
+      setPendingRequests(data || []);
+    }
+  }
+
+  async function fetchPendingRedemptions() {
+    const { data, error } = await supabase
+      .from('redemptions')
+      .select('*, children(name)')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true });
+    if (error) {
+      console.error('获取待审批兑换失败:', error);
+    } else {
+      setPendingRedemptions(data || []);
+    }
+  }
+
+  async function fetchAllRedemptions() {
+    const { data, error } = await supabase
+      .from('redemptions')
+      .select('*, children(name)')
+      .eq('is_active', true)
+      .order('created_at', { ascending: false });
+    if (error) {
+      console.error('获取所有兑换失败:', error);
+    } else {
+      setRedemptions(data || []);
+    }
+  }
+
+  async function fetchTodayCheckIns(childId: string) {
+    const today = new Date().toISOString().split('T')[0];
+    
+    const { data, error } = await supabase
+      .from('check_ins')
+      .select('*, tasks(name, points)')
+      .eq('child_id', childId)
+      .eq('check_in_date', today);
+
+    if (error) {
+      console.error('获取今日打卡记录失败:', error);
+    } else {
+      const formatted = (data || []).map((item: any) => ({
+        task_name: item.tasks?.name || '未知任务',
+        points: item.points || 0,
+        check_in_date: item.check_in_date
+      }));
+      setTodayCheckIns(formatted);
+    }
+  }
+
+  async function fetchTodayRedemptions(childId: string) {
+    const today = new Date().toISOString().split('T')[0];
+    
+    const { data, error } = await supabase
+      .from('redemptions')
+      .select('reward_name, points_cost, status, confirmed_at')
+      .eq('child_id', childId)
+      .eq('status', 'confirmed')
+      .gte('confirmed_at', today);
+
+    if (error) {
+      console.error('获取今日兑换记录失败:', error);
+    } else {
+      setTodayRedemptions(data || []);
+    }
+  }
+
+  async function fetchHeatmapData(childId: string) {
+    const year = heatmapMonth.getFullYear();
+    const month = heatmapMonth.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    
+    const startDate = firstDay.toISOString().split('T')[0];
+    const endDate = lastDay.toISOString().split('T')[0];
+
+    const { data, error } = await supabase
+      .from('check_ins')
+      .select('check_in_date')
+      .eq('child_id', childId)
+      .gte('check_in_date', startDate)
+      .lte('check_in_date', endDate);
+
+    if (error) {
+      console.error('获取热力图数据失败:', error);
+      return;
+    }
+
+    const dateCount: Record<string, number> = {};
+    data?.forEach(item => {
+      const date = item.check_in_date;
+      dateCount[date] = (dateCount[date] || 0) + 1;
+    });
+
+    const result: HeatmapData[] = [];
+    const current = new Date(year, month, 1);
+    while (current <= lastDay) {
+      const dateStr = current.toISOString().split('T')[0];
+      result.push({
+        date: dateStr,
+        count: dateCount[dateStr] || 0
+      });
+      current.setDate(current.getDate() + 1);
+    }
+
+    setHeatmapData(result);
+  }
+
+  // ====== 兑换奖励管理 ======
+  async function handleCreateReward() {
+    const rewardName = prompt('请输入奖励名称（如：冰淇淋、玩具车）：');
+    if (!rewardName || rewardName.trim() === '') return;
+
+    const { data: existing, error: checkError } = await supabase
+      .from('redemptions')
+      .select('id')
+      .eq('reward_name', rewardName.trim());
+
+    if (checkError) {
+      alert('检查重复失败: ' + checkError.message);
+      return;
+    }
+
+    if (existing && existing.length > 0) {
+      alert('已存在同名兑换奖励，请使用不同名称');
+      return;
+    }
+
+    const pointsCost = parseInt(prompt('请输入所需积分（数字）：') || '0');
+    if (isNaN(pointsCost) || pointsCost <= 0) {
+      alert('请输入有效的积分数量');
+      return;
+    }
+
+    if (children.length === 0) {
+      alert('请先添加孩子');
+      return;
+    }
+
+    const childOptions = children.map((c, i) => `${i + 1}. ${c.name}`).join('\n');
+    const childIndex = parseInt(prompt(`请选择要关联的孩子：\n${childOptions}`) || '0') - 1;
+
+    if (isNaN(childIndex) || childIndex < 0 || childIndex >= children.length) {
+      alert('无效的选择');
+      return;
+    }
+
+    const selectedChild = children[childIndex];
+
+    const { error } = await supabase
+      .from('redemptions')
+      .insert({
+        child_id: selectedChild.id,
+        reward_name: rewardName.trim(),
+        points_cost: pointsCost,
+        status: 'available',
+        is_active: true,
+        score_before: 0,
+        score_after: 0,
+      });
+
+    if (error) {
+      alert('创建兑换奖励失败: ' + error.message);
+    } else {
+      alert(`✅ 成功创建兑换奖励：${rewardName.trim()}（需要 ${pointsCost} 分）`);
+      await fetchAllRedemptions();
+    }
+  }
+
+  async function handleEditRedemption(id: string, currentName: string, currentCost: number) {
+    const newName = prompt('修改奖励名称：', currentName);
+    if (!newName || newName.trim() === '') return;
+
+    const { data: existing, error: checkError } = await supabase
+      .from('redemptions')
+      .select('id')
+      .eq('reward_name', newName.trim())
+      .neq('id', id);
+
+    if (checkError) {
+      alert('检查重复失败: ' + checkError.message);
+      return;
+    }
+
+    if (existing && existing.length > 0) {
+      alert('已存在同名兑换奖励，请使用不同名称');
+      return;
+    }
+
+    const newCost = parseInt(prompt('修改所需积分：', String(currentCost)) || '0');
+    if (isNaN(newCost) || newCost <= 0) {
+      alert('请输入有效的积分数量');
+      return;
+    }
+
+    const { error } = await supabase
+      .from('redemptions')
+      .update({
+        reward_name: newName.trim(),
+        points_cost: newCost,
+      })
+      .eq('id', id);
+
+    if (error) {
+      alert('编辑失败: ' + error.message);
+    } else {
+      alert('✅ 兑换奖励已更新');
+      await fetchAllRedemptions();
+    }
+  }
+
+  async function handleToggleRedemption(id: string, currentStatus: boolean) {
+    const { error } = await supabase
+      .from('redemptions')
+      .update({ is_active: !currentStatus })
+      .eq('id', id);
+    if (error) {
+      alert('操作失败: ' + error.message);
+    } else {
+      alert(`✅ 兑换奖励已${!currentStatus ? '启用' : '停用'}`);
+      await fetchAllRedemptions();
+    }
+  }
+
+  async function handleDeleteRedemption(id: string) {
+    if (!confirm('确定要删除这个兑换奖励吗？')) return;
+
+    const { error } = await supabase
+      .from('redemptions')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      alert('删除失败: ' + error.message);
+    } else {
+      alert('已删除兑换奖励');
+      await fetchAllRedemptions();
+    }
+  }
+
+  // ====== 兑换审批 ======
+  async function handleConfirmRedemption(id: string, childId: string, cost: number) {
+    if (!confirm('确认兑换？将扣除孩子积分。')) return;
+
+    const { data: childData, error: childError } = await supabase
+      .from('children')
+      .select('total_score')
+      .eq('id', childId)
+      .single();
+
+    if (childError || !childData) {
+      alert('获取孩子积分失败');
+      return;
+    }
+
+    const scoreBefore = childData.total_score;
+    if (scoreBefore < cost) {
+      alert('孩子积分不足，无法兑换');
+      return;
+    }
+    const scoreAfter = scoreBefore - cost;
+
+    const { error: updateRedemptionError } = await supabase
+      .from('redemptions')
+      .update({
+        status: 'confirmed',
+        score_before: scoreBefore,
+        score_after: scoreAfter,
+        confirmed_at: new Date().toISOString(),
+      })
+      .eq('id', id);
+
+    if (updateRedemptionError) {
+      alert('确认失败: ' + updateRedemptionError.message);
+      return;
+    }
+
+    const { error: updateChildError } = await supabase
+      .from('children')
+      .update({ total_score: scoreAfter })
+      .eq('id', childId);
+
+    if (updateChildError) {
+      alert('扣除积分失败: ' + updateChildError.message);
+      return;
+    }
+
+    alert('✅ 兑换确认成功！');
+    await fetchPendingRedemptions();
+    await fetchAllRedemptions();
+    await fetchChildren();
+    if (selectedChildForDetail) {
+      await fetchTodayRedemptions(selectedChildForDetail);
+    }
+  }
+
+  async function handleCancelRedemption(id: string) {
+    if (!confirm('取消兑换申请？')) return;
+
+    const { error } = await supabase
+      .from('redemptions')
+      .update({ status: 'cancelled' })
+      .eq('id', id);
+
+    if (error) {
+      alert('取消失败: ' + error.message);
+    } else {
+      alert('已取消兑换申请');
+      await fetchPendingRedemptions();
+      await fetchAllRedemptions();
+    }
+  }
+
+  // ====== 任务管理 ======
   async function handleAddTask(name: string, category: string, points: number) {
     const { error } = await supabase
       .from('tasks')
@@ -81,7 +486,6 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
     alert('✅ 任务添加成功！');
   }
 
-  // 编辑任务
   async function handleEditTask(taskId: string, name: string, category: string, points: number) {
     const { error } = await supabase
       .from('tasks')
@@ -95,7 +499,6 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
     alert('✅ 任务已更新！');
   }
 
-  // 切换任务启用状态（软删除/恢复）
   async function handleToggleTask(taskId: string, currentStatus: boolean) {
     const { error } = await supabase
       .from('tasks')
@@ -109,9 +512,8 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
     alert(`✅ 任务已${!currentStatus ? '启用' : '停用'}`);
   }
 
-  // 删除任务（硬删除，谨慎使用，会导致关联的打卡记录丢失，建议改用停用）
   async function handleDeleteTask(taskId: string) {
-    if (!confirm('确定要永久删除这个任务吗？（关联的打卡记录也将被删除）')) return;
+    if (!confirm('确定要永久删除这个任务吗？')) return;
     const { error } = await supabase
       .from('tasks')
       .delete()
@@ -122,77 +524,117 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
     }
     await fetchTasks();
     alert('🗑️ 任务已删除');
-  }  
+  }
 
-  // 执行打卡
-  async function handleCheckIn() {
-    if (!selectedChild || !selectedTask) {
-      setMessage('请选择孩子和任务');
-      return;
+  // ====== 打卡审批 ======
+  async function handleApproveCheckIn(requestId: string, childId: string, points: number) {
+    if (!confirm('确认通过该打卡申请？')) return;
+
+    try {
+      const { data: requestData, error: requestError } = await supabase
+        .from('check_in_requests')
+        .select('task_id')
+        .eq('id', requestId)
+        .single();
+
+      if (requestError) {
+        alert('获取申请详情失败: ' + requestError.message);
+        return;
+      }
+
+      const { data: childData, error: childError } = await supabase
+        .from('children')
+        .select('total_score, level')
+        .eq('id', childId)
+        .single();
+
+      if (childError) {
+        alert('获取孩子信息失败: ' + childError.message);
+        return;
+      }
+
+      const scoreBefore = childData.total_score;
+      const scoreAfter = scoreBefore + points;
+
+      const thresholds = [0, 40, 100, 180, 280, 400, 540, 700];
+      let newLevel = 0;
+      for (let i = 0; i < thresholds.length; i++) {
+        if (scoreAfter >= thresholds[i]) newLevel = i;
+      }
+
+      const { error: updateError } = await supabase
+        .from('check_in_requests')
+        .update({
+          status: 'approved',
+          approved_at: new Date().toISOString(),
+          approved_by: profile.id
+        })
+        .eq('id', requestId);
+
+      if (updateError) {
+        alert('审批失败: ' + updateError.message);
+        return;
+      }
+
+      const { error: childUpdateError } = await supabase
+        .from('children')
+        .update({ 
+          total_score: scoreAfter, 
+          level: newLevel 
+        })
+        .eq('id', childId);
+
+      if (childUpdateError) {
+        alert('更新积分失败: ' + childUpdateError.message);
+        return;
+      }
+
+      const taskId = requestData?.task_id;
+      if (taskId) {
+        await supabase
+          .from('check_ins')
+          .insert({
+            child_id: childId,
+            task_id: taskId,
+            points: points,
+            score_before: scoreBefore,
+            score_after: scoreAfter,
+            check_in_date: new Date().toISOString().split('T')[0],
+          });
+      }
+
+      alert('✅ 打卡审批通过！积分已增加 ' + points + ' 分');
+      
+      await fetchPendingRequests();
+      await fetchChildren();
+      if (selectedChildForDetail) {
+        await fetchTodayCheckIns(selectedChildForDetail);
+        await fetchHeatmapData(selectedChildForDetail);
+      }
+      
+    } catch (err) {
+      console.error('审批过程出错:', err);
+      alert('审批过程出错，请查看控制台');
     }
+  }
 
-    setLoading(true);
-    setMessage('');
+  async function handleRejectCheckIn(requestId: string) {
+    if (!confirm('拒绝该打卡申请？')) return;
 
-    // 获取当前孩子积分
-    const child = children.find(c => c.id === selectedChild);
-    if (!child) {
-      setMessage('孩子不存在');
-      setLoading(false);
-      return;
+    const { error } = await supabase
+      .from('check_in_requests')
+      .update({
+        status: 'rejected',
+        rejected_at: new Date().toISOString()
+      })
+      .eq('id', requestId);
+
+    if (error) {
+      alert('操作失败: ' + error.message);
+    } else {
+      alert('已拒绝该申请');
+      await fetchPendingRequests();
     }
-
-    const task = tasks.find(t => t.id === selectedTask);
-    if (!task) {
-      setMessage('任务不存在');
-      setLoading(false);
-      return;
-    }
-
-    const scoreBefore = child.total_score;
-    const pointsToAdd = task.points;
-    const scoreAfter = scoreBefore + pointsToAdd;
-
-    // 计算新等级（阈值：0, 40, 100, 180, 280, 400, 540, 700）
-    const thresholds = [0, 40, 100, 180, 280, 400, 540, 700];
-    let newLevel = 0;
-    for (let i = 0; i < thresholds.length; i++) {
-      if (scoreAfter >= thresholds[i]) newLevel = i;
-    }
-
-    // 调用 Supabase RPC 或直接更新（这里用事务模拟）
-    // 实际项目可用 Supabase 函数，这里简化：先插入打卡记录，再更新孩子
-    const { error: checkInError } = await supabase.from('check_ins').insert({
-      child_id: selectedChild,
-      task_id: selectedTask,
-      points: pointsToAdd,
-      score_before: scoreBefore,
-      score_after: scoreAfter,
-      check_in_date: new Date().toISOString().split('T')[0],
-    });
-
-    if (checkInError) {
-      setMessage('打卡失败: ' + checkInError.message);
-      setLoading(false);
-      return;
-    }
-
-    // 更新孩子积分和等级
-    const { error: updateError } = await supabase
-      .from('children')
-      .update({ total_score: scoreAfter, level: newLevel })
-      .eq('id', selectedChild);
-
-    if (updateError) {
-      setMessage('更新积分失败: ' + updateError.message);
-      setLoading(false);
-      return;
-    }
-
-    // 刷新孩子列表
-    await fetchChildren();
-    setMessage(`✅ 打卡成功！${child.name} 获得 ${pointsToAdd} 分，当前共 ${scoreAfter} 分，等级 Lv.${newLevel}`);
-    setLoading(false);
   }
 
   const handleLogout = async () => {
@@ -200,7 +642,6 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
     window.location.reload();
   };
 
-  // 获取等级对应的表情
   const getPetEmoji = (type: string, level: number) => {
     const emojis = {
       cat: ['🐱', '🐈', '😺', '😸', '😻', '😽', '🙀', '🐾'],
@@ -211,91 +652,101 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
     return list[level % list.length] || '🐾';
   };
 
+  const totalTodayPoints = todayCheckIns.reduce((sum, item) => sum + item.points, 0);
+  const totalTodayRedemptionPoints = todayRedemptions.reduce((sum, item) => sum + item.points_cost, 0);
+
+  // 获取当前月份的天数
+  const getDaysInMonth = (year: number, month: number) => {
+    return new Date(year, month + 1, 0).getDate();
+  };
+
+  // 获取当月第一天是星期几（0=周日，1=周一...）
+  const getFirstDayOfMonth = (year: number, month: number) => {
+    return new Date(year, month, 1).getDay();
+  };
+
+  const year = heatmapMonth.getFullYear();
+  const month = heatmapMonth.getMonth();
+  const daysInMonth = getDaysInMonth(year, month);
+  const firstDay = getFirstDayOfMonth(year, month);
+  const today = new Date().toISOString().split('T')[0];
+
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* 顶部导航 */}
       <nav className="bg-white shadow p-4 flex justify-between items-center">
         <h1 className="text-xl font-bold text-blue-600">🐾 打卡宠物 · 家长端</h1>
         <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-600">👋 {profile.family_name || '未命名家庭'}</span>
+          <span className="text-sm text-gray-600">👋 家长</span>
           <button onClick={handleLogout} className="bg-red-500 text-white px-3 py-1 rounded text-sm">
             退出
           </button>
         </div>
       </nav>
 
-      {/* 主内容 */}
       <div className="p-6 max-w-4xl mx-auto">
-        {/* 打卡卡片 */}
-        <div className="bg-white p-6 rounded-lg shadow mb-6">
-          <h2 className="text-xl font-bold mb-4">📋 今日打卡</h2>
-          
-          {children.length === 0 || tasks.length === 0 ? (
-            <p className="text-gray-500">请先在后台添加孩子和任务（或刷新后重试）</p>
-          ) : (
-            <>
-              <div className="grid grid-cols-2 gap-4 mb-4">
+        {/* 待审批打卡申请 */}
+        {pendingRequests.length > 0 && (
+          <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200 mb-4">
+            <h3 className="font-semibold text-yellow-700 mb-2">⏳ 待审批打卡申请</h3>
+            {pendingRequests.map(req => (
+              <div key={req.id} className="flex items-center justify-between border-b border-yellow-100 py-2">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">选择孩子</label>
-                  <select
-                    className="w-full p-2 border rounded"
-                    value={selectedChild}
-                    onChange={(e) => setSelectedChild(e.target.value)}
-                  >
-                    {children.map(c => (
-                      <option key={c.id} value={c.id}>
-                        {c.name} (Lv.{c.level} · {c.total_score}分)
-                      </option>
-                    ))}
-                  </select>
+                  <span className="font-medium">{req.children?.name}</span>
+                  <span className="text-gray-600 ml-2">申请打卡「{req.tasks?.name}」</span>
+                  <span className="text-xs text-blue-600 ml-2">+{req.points}分</span>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">选择任务</label>
-                  <select
-                    className="w-full p-2 border rounded"
-                    value={selectedTask}
-                    onChange={(e) => setSelectedTask(e.target.value)}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleApproveCheckIn(req.id, req.child_id, req.points)}
+                    className="bg-green-500 text-white px-3 py-1 rounded text-sm hover:bg-green-600"
                   >
-                    {tasks.map(t => (
-                      <option key={t.id} value={t.id}>
-                        {t.name} (+{t.points}分)
-                      </option>
-                    ))}
-                  </select>
+                    通过
+                  </button>
+                  <button
+                    onClick={() => handleRejectCheckIn(req.id)}
+                    className="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600"
+                  >
+                    拒绝
+                  </button>
                 </div>
               </div>
-              <button
-                onClick={handleCheckIn}
-                disabled={loading}
-                className="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600 disabled:bg-gray-400"
-              >
-                {loading ? '打卡中...' : '✅ 打卡！'}
-              </button>
-              {message && (
-                <div className={`mt-3 p-2 rounded text-sm ${message.startsWith('✅') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                  {message}
+            ))}
+          </div>
+        )}
+
+        {/* 待审批兑换申请 */}
+        {pendingRedemptions.length > 0 && (
+          <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200 mb-4">
+            <h3 className="font-semibold text-yellow-700 mb-2">🏪 待审批兑换申请</h3>
+            {pendingRedemptions.map(req => (
+              <div key={req.id} className="flex items-center justify-between border-b border-yellow-100 py-2">
+                <div>
+                  <span className="font-medium">{req.children?.name}</span>
+                  <span className="text-gray-600 ml-2">申请兑换「{req.reward_name}」</span>
+                  <span className="text-xs text-blue-600 ml-2">需要 {req.points_cost} 分</span>
                 </div>
-              )}
-            </>
-          )}
-        </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleConfirmRedemption(req.id, req.child_id, req.points_cost)}
+                    className="bg-green-500 text-white px-3 py-1 rounded text-sm hover:bg-green-600"
+                  >
+                    确认
+                  </button>
+                  <button
+                    onClick={() => handleCancelRedemption(req.id)}
+                    className="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600"
+                  >
+                    取消
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
-        {/* 统计看板 */}
-        <div className="bg-white p-6 rounded-lg shadow mb-6">
-          <h2 className="text-xl font-bold mb-4">📊 统计看板</h2>
-          {children.length === 0 ? (
-            <p className="text-gray-500">暂无孩子数据</p>
-          ) : (
-            <div className="space-y-4">
-              {children.map(child => (
-                <ChildStats key={child.id} childId={child.id} childName={child.name} />
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* 孩子状态卡片 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* 我的孩子们 */}
+        <h2 className="text-xl font-bold mt-4 mb-2">👶 我的孩子们</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           {children.map(child => (
             <div key={child.id} className="bg-white p-4 rounded-lg shadow">
               <div className="flex items-center gap-3">
@@ -304,8 +755,8 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
                   <h3 className="font-bold text-lg">{child.name}</h3>
                   <p className="text-sm text-gray-600">等级 Lv.{child.level} · 积分 {child.total_score}</p>
                   <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
-                    <div 
-                      className="bg-blue-500 h-2 rounded-full" 
+                    <div
+                      className="bg-blue-500 h-2 rounded-full"
                       style={{ width: `${Math.min((child.total_score / 700) * 100, 100)}%` }}
                     ></div>
                   </div>
@@ -313,6 +764,191 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* 今日打卡情况 */}
+        <div className="bg-white p-6 rounded-lg shadow mb-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold">📋 今日打卡情况</h2>
+            {children.length > 0 && (
+              <select
+                className="p-2 border rounded text-sm"
+                value={selectedChildForDetail}
+                onChange={(e) => setSelectedChildForDetail(e.target.value)}
+              >
+                {children.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {children.length === 0 ? (
+            <p className="text-gray-500">暂无孩子</p>
+          ) : todayCheckIns.length === 0 ? (
+            <div className="text-center py-6">
+              <p className="text-gray-400">今日还没有打卡记录</p>
+              <p className="text-xs text-gray-400 mt-1">让孩子在「孩子端」申请打卡吧</p>
+            </div>
+          ) : (
+            <div>
+              <div className="space-y-2">
+                {todayCheckIns.map((item, index) => (
+                  <div key={index} className="flex items-center justify-between border-b pb-2">
+                    <span className="text-gray-700">{item.task_name}</span>
+                    <span className="text-green-600 font-medium">+{item.points}分</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 pt-3 border-t border-dashed flex justify-between items-center">
+                <span className="font-bold text-gray-700">今日累计</span>
+                <span className="text-blue-600 font-bold text-lg">+{totalTodayPoints} 分</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 今日兑换情况 */}
+        <div className="bg-white p-6 rounded-lg shadow mb-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold">🎁 今日兑换情况</h2>
+            {children.length > 0 && (
+              <span className="text-sm text-gray-500">
+                {children.find(c => c.id === selectedChildForDetail)?.name || ''}
+              </span>
+            )}
+          </div>
+
+          {children.length === 0 ? (
+            <p className="text-gray-500">暂无孩子</p>
+          ) : todayRedemptions.length === 0 ? (
+            <div className="text-center py-6">
+              <p className="text-gray-400">今日还没有兑换记录</p>
+            </div>
+          ) : (
+            <div>
+              <div className="space-y-2">
+                {todayRedemptions.map((item, index) => (
+                  <div key={index} className="flex items-center justify-between border-b pb-2">
+                    <span className="text-gray-700">{item.reward_name}</span>
+                    <span className="text-red-600 font-medium">-{item.points_cost}分</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 pt-3 border-t border-dashed flex justify-between items-center">
+                <span className="font-bold text-gray-700">今日累计消耗</span>
+                <span className="text-red-600 font-bold text-lg">
+                  -{totalTodayRedemptionPoints} 分
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 热力图 */}
+        <div className="bg-white p-6 rounded-lg shadow mb-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold">📊 打卡热力图</h2>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  const newMonth = new Date(heatmapMonth);
+                  newMonth.setMonth(newMonth.getMonth() - 1);
+                  setHeatmapMonth(newMonth);
+                }}
+                className="px-2 py-1 border rounded text-sm hover:bg-gray-100"
+              >
+                ◀
+              </button>
+              <span className="text-sm font-medium min-w-[100px] text-center">
+                {year}年 {month + 1}月
+              </span>
+              <button
+                onClick={() => {
+                  const newMonth = new Date(heatmapMonth);
+                  newMonth.setMonth(newMonth.getMonth() + 1);
+                  setHeatmapMonth(newMonth);
+                }}
+                className="px-2 py-1 border rounded text-sm hover:bg-gray-100"
+              >
+                ▶
+              </button>
+              <button
+                onClick={() => {
+                  const now = new Date();
+                  setHeatmapMonth(now);
+                }}
+                className="px-2 py-1 border rounded text-sm hover:bg-gray-100 text-blue-600"
+              >
+                今天
+              </button>
+            </div>
+          </div>
+
+          {children.length === 0 || !selectedChildForDetail ? (
+            <p className="text-gray-500 text-center py-4">请选择孩子查看打卡热力图</p>
+          ) : (
+            <div>
+              {/* 星期行 */}
+              <div className="grid grid-cols-7 gap-1 mb-1 text-center text-xs text-gray-400">
+                <div>日</div>
+                <div>一</div>
+                <div>二</div>
+                <div>三</div>
+                <div>四</div>
+                <div>五</div>
+                <div>六</div>
+              </div>
+              {/* 日期网格 */}
+              <div className="grid grid-cols-7 gap-1">
+                {Array.from({ length: firstDay }).map((_, i) => (
+                  <div key={`empty-${i}`} className="aspect-square"></div>
+                ))}
+                {Array.from({ length: daysInMonth }).map((_, i) => {
+                  const day = i + 1;
+                  const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                  const data = heatmapData.find(d => d.date === dateStr);
+                  const count = data?.count || 0;
+                  const isToday = dateStr === today;
+                  
+                  let colorClass = 'bg-gray-100 hover:bg-gray-200';
+                  if (count === 0) colorClass = 'bg-gray-100 hover:bg-gray-200';
+                  else if (count <= 2) colorClass = 'bg-green-200 hover:bg-green-300';
+                  else if (count <= 4) colorClass = 'bg-green-400 hover:bg-green-500';
+                  else if (count <= 6) colorClass = 'bg-green-600 hover:bg-green-700';
+                  else colorClass = 'bg-green-800 hover:bg-green-900';
+
+                  return (
+                    <div
+                      key={dateStr}
+                      className={`aspect-square rounded ${colorClass} transition-all hover:scale-110 hover:shadow-lg cursor-default relative ${isToday ? 'ring-2 ring-blue-500 ring-offset-1' : ''}`}
+                      title={`${month + 1}月${day}日: ${count} 次打卡`}
+                    >
+                      <span className="absolute inset-0 flex items-center justify-center text-[8px] text-gray-600 opacity-30">
+                        {day}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* 图例 */}
+              <div className="flex items-center gap-2 mt-3 text-xs text-gray-500">
+                <span>少</span>
+                <div className="w-4 h-4 bg-gray-100 rounded border border-gray-200"></div>
+                <div className="w-4 h-4 bg-green-200 rounded"></div>
+                <div className="w-4 h-4 bg-green-400 rounded"></div>
+                <div className="w-4 h-4 bg-green-600 rounded"></div>
+                <div className="w-4 h-4 bg-green-800 rounded"></div>
+                <span>多</span>
+                <span className="ml-2 text-gray-400">（悬停查看详情）</span>
+              </div>
+              {/* 统计信息 */}
+              <div className="mt-3 text-xs text-gray-400">
+                当月打卡总次数: {heatmapData.reduce((sum, d) => sum + d.count, 0)} 次
+                | 打卡天数: {heatmapData.filter(d => d.count > 0).length} 天
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 任务管理 */}
@@ -387,248 +1023,67 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
           )}
         </div>
 
-        {/* 商店管理 - 待确认兑换 */}
+        {/* 兑换奖励管理 */}
         <div className="mt-6 bg-white p-6 rounded-lg shadow">
-          <h2 className="text-xl font-bold mb-4">🏪 兑换申请管理</h2>
-          <div id="redemption-list">
-            <PendingRedemptions onAction={fetchChildren} />
-          </div>
-        </div>                
-      </div>
-    </div>
-  );
-}
-
-// 待确认兑换列表组件
-function PendingRedemptions({ onAction }: { onAction: () => void }) {
-  const [redemptions, setRedemptions] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    fetchPending();
-  }, []);
-
-  async function fetchPending() {
-    const { data: pendingData, error } = await supabase
-      .from('redemptions')
-      .select('*, children(name)')
-      .eq('status', 'pending')
-      .order('created_at', { ascending: true });
-    if (error) {
-      console.error('获取兑换列表失败:', error);
-    } else {
-      setRedemptions(pendingData || []);
-    }
-  }
-
-  async function handleConfirm(id: string, childId: string, cost: number) {
-    if (!confirm('确认兑换？将扣除孩子积分。')) return;
-    setLoading(true);
-
-    // 先获取孩子当前积分
-    const { data: childData, error: childError } = await supabase
-      .from('children')
-      .select('total_score')
-      .eq('id', childId)
-      .single();
-
-    if (childError || !childData) {
-      alert('获取孩子积分失败');
-      setLoading(false);
-      return;
-    }
-
-    const scoreBefore = childData.total_score;
-    if (scoreBefore < cost) {
-      alert('孩子积分不足，无法兑换');
-      setLoading(false);
-      return;
-    }
-    const scoreAfter = scoreBefore - cost;
-
-    // 更新兑换状态
-    const { error: updateRedemptionError } = await supabase
-      .from('redemptions')
-      .update({
-        status: 'confirmed',
-        score_before: scoreBefore,
-        score_after: scoreAfter,
-        confirmed_at: new Date().toISOString(),
-      })
-      .eq('id', id);
-
-    if (updateRedemptionError) {
-      alert('确认失败: ' + updateRedemptionError.message);
-      setLoading(false);
-      return;
-    }
-
-    // 更新孩子积分
-    const { error: updateChildError } = await supabase
-      .from('children')
-      .update({ total_score: scoreAfter })
-      .eq('id', childId);
-
-    if (updateChildError) {
-      alert('扣除积分失败: ' + updateChildError.message);
-      setLoading(false);
-      return;
-    }
-
-    alert('✅ 兑换确认成功！');
-    setLoading(false);
-    await fetchPending();
-    onAction(); // 刷新家长端孩子列表
-  }
-
-  async function handleCancel(id: string) {
-    if (!confirm('取消兑换申请？')) return;
-    setLoading(true);
-
-    const { error } = await supabase
-      .from('redemptions')
-      .update({ status: 'cancelled' })
-      .eq('id', id);
-
-    if (error) {
-      alert('取消失败: ' + error.message);
-    } else {
-      alert('已取消兑换申请');
-      await fetchPending();
-    }
-    setLoading(false);
-  }
-
-  if (redemptions.length === 0) {
-    return <p className="text-gray-400 text-sm">暂无待确认的兑换申请</p>;
-  }
-
-  return (
-    <div className="space-y-2">
-      {redemptions.map((r: any) => (
-        <div key={r.id} className="flex items-center justify-between border-b pb-2">
-          <div>
-            <span className="font-medium">{r.reward_name}</span>
-            <span className="text-xs text-gray-500 ml-2">需要 {r.points_cost} 分</span>
-            <span className="text-xs text-gray-400 ml-2">👶 {r.children?.name || '未知孩子'}</span>
-            <span className="text-xs text-yellow-600 ml-2">⏳ 待确认</span>
-          </div>
-          <div className="flex gap-1">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold">🏪 兑换奖励管理</h2>
             <button
-              onClick={() => handleConfirm(r.id, r.child_id, r.points_cost)}
-              disabled={loading}
-              className="bg-green-500 text-white px-3 py-1 rounded text-sm hover:bg-green-600 disabled:bg-gray-400"
+              onClick={handleCreateReward}
+              className="bg-green-500 text-white px-4 py-1 rounded hover:bg-green-600 text-sm"
             >
-              确认
-            </button>
-            <button
-              onClick={() => handleCancel(r.id)}
-              disabled={loading}
-              className="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600 disabled:bg-gray-400"
-            >
-              取消
+              ＋ 添加兑换奖励
             </button>
           </div>
+
+          {redemptions.length === 0 ? (
+            <p className="text-gray-500">暂无兑换奖励，点击"添加兑换奖励"创建</p>
+          ) : (
+            <div className="space-y-2">
+              {redemptions.map((r: any) => (
+                <div key={r.id} className="flex items-center justify-between border-b pb-2">
+                  <div className="flex items-center gap-3">
+                    <span className={`text-sm font-medium ${r.is_active !== false ? 'text-gray-800' : 'text-gray-400 line-through'}`}>
+                      {r.reward_name}
+                    </span>
+                    <span className="text-xs text-blue-600 font-bold">{r.points_cost}分</span>
+                    <span className="text-xs text-gray-400">👶 {r.children?.name || '未知孩子'}</span>
+                    <span className={`text-xs ${r.is_active !== false ? 'text-green-600' : 'text-red-400'}`}>
+                      {r.is_active !== false ? '● 启用' : '○ 停用'}
+                    </span>
+                  </div>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => {
+                        const newName = prompt('修改奖励名称：', r.reward_name);
+                        if (newName && newName.trim()) {
+                          const newCost = parseInt(prompt('修改所需积分：', String(r.points_cost)) || '0');
+                          if (!isNaN(newCost) && newCost > 0) {
+                            handleEditRedemption(r.id, newName.trim(), newCost);
+                          }
+                        }
+                      }}
+                      className="text-xs bg-yellow-500 text-white px-2 py-0.5 rounded hover:bg-yellow-600"
+                    >
+                      编辑
+                    </button>
+                    <button
+                      onClick={() => handleToggleRedemption(r.id, r.is_active !== false)}
+                      className={`text-xs px-2 py-0.5 rounded text-white ${r.is_active !== false ? 'bg-gray-500 hover:bg-gray-600' : 'bg-green-500 hover:bg-green-600'}`}
+                    >
+                      {r.is_active !== false ? '停用' : '启用'}
+                    </button>
+                    <button
+                      onClick={() => handleDeleteRedemption(r.id)}
+                      className="text-xs bg-red-500 text-white px-2 py-0.5 rounded hover:bg-red-600"
+                    >
+                      删除
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-      ))}
-    </div>
-  );
-}
-
-// 子组件：单个孩子的统计
-function ChildStats({ childId, childName }: { childId: string; childName: string }) {
-  const [heatmapData, setHeatmapData] = useState<{ date: string; count: number }[]>([]);
-  const [streak, setStreak] = useState(0);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetchStats();
-  }, [childId]);
-
-  async function fetchStats() {
-    setLoading(true);
-    // 获取最近30天的打卡记录
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const startDate = thirtyDaysAgo.toISOString().split('T')[0];
-
-    // ✅ 修正：解构出 data 并重命名为 checkInsData
-    const { data: checkInsData, error } = await supabase
-      .from('check_ins')
-      .select('check_in_date')
-      .eq('child_id', childId)
-      .gte('check_in_date', startDate)
-      .order('check_in_date', { ascending: true });
-
-    if (error) {
-      console.error('获取打卡统计失败:', error);
-      setLoading(false);
-      return;
-    }
-
-    // 构建热力图数据：按日期分组计数
-    const dateCount: Record<string, number> = {};
-    // ✅ 使用 checkInsData
-    checkInsData?.forEach(record => {
-      const date = record.check_in_date;
-      dateCount[date] = (dateCount[date] || 0) + 1;
-    });
-
-    // 生成最近30天的完整列表（补全缺失日期）
-    const result: { date: string; count: number }[] = [];
-    const current = new Date(startDate);
-    const end = new Date();
-    while (current <= end) {
-      const dateStr = current.toISOString().split('T')[0];
-      result.push({
-        date: dateStr,
-        count: dateCount[dateStr] || 0,
-      });
-      current.setDate(current.getDate() + 1);
-    }
-    setHeatmapData(result);
-
-    // 计算连续打卡天数（从今天往前数）
-    let streakCount = 0;
-    // ✅ 使用 checkInsData
-    const checkDates = new Set(checkInsData?.map(r => r.check_in_date) || []);
-    let checkDate = new Date();
-    while (true) {
-      const dateStr = checkDate.toISOString().split('T')[0];
-      if (checkDates.has(dateStr)) {
-        streakCount++;
-        checkDate.setDate(checkDate.getDate() - 1);
-      } else {
-        break;
-      }
-    }
-    setStreak(streakCount);
-    setLoading(false);
-  }
-
-  if (loading) return <div>加载统计中...</div>;
-
-  // 热力图（简单方块显示，后续可用 recharts 做更美观的）
-  return (
-    <div className="border rounded p-4">
-      <h3 className="font-semibold text-md mb-2">{childName} 的统计</h3>
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-sm text-gray-600">🔥 连续打卡：{streak} 天</span>
-      </div>
-      <div className="grid grid-cols-7 gap-1">
-        {heatmapData.map((item, idx) => {
-          const color = item.count === 0 ? 'bg-gray-100' :
-                        item.count <= 2 ? 'bg-green-200' :
-                        item.count <= 4 ? 'bg-green-400' :
-                        'bg-green-600';
-          return (
-            <div
-              key={idx}
-              className={`w-6 h-6 rounded ${color} hover:scale-110 transition-transform cursor-default`}
-              title={`${item.date}: ${item.count} 次打卡`}
-            ></div>
-          );
-        })}
       </div>
     </div>
   );

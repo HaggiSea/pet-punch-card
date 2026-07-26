@@ -8,3 +8,15 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+export async function getUsersByRole(role: 'parent' | 'child') {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, username')
+    .eq('role', role);
+  if (error) {
+    console.error('获取用户列表失败:', error);
+    return [];
+  }
+  return data || [];
+}
