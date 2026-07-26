@@ -57,38 +57,6 @@ interface HeatmapData {
   count: number;
 }
 
-// 热力图单元格组件
-function HeatmapCell({ date, count }: { date: string; count: number }) {
-  const [showTooltip, setShowTooltip] = useState(false);
-  
-  const getColor = () => {
-    if (count === 0) return 'bg-gray-100 hover:bg-gray-200';
-    if (count <= 2) return 'bg-green-200 hover:bg-green-300';
-    if (count <= 4) return 'bg-green-400 hover:bg-green-500';
-    if (count <= 6) return 'bg-green-600 hover:bg-green-700';
-    return 'bg-green-800 hover:bg-green-900';
-  };
-
-  const formatDate = (dateStr: string) => {
-    const d = new Date(dateStr);
-    return `${d.getMonth() + 1}月${d.getDate()}日`;
-  };
-
-  return (
-    <div
-      className={`aspect-square rounded ${getColor()} transition-all hover:scale-110 hover:shadow-lg cursor-default relative`}
-      onMouseEnter={() => setShowTooltip(true)}
-      onMouseLeave={() => setShowTooltip(false)}
-    >
-      {showTooltip && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap z-10 shadow-lg">
-          {formatDate(date)}: {count} 次打卡
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function ChildDashboard({ profile }: ChildDashboardProps) {
   const [child, setChild] = useState<Child | null>(null);
   const [rewards, setRewards] = useState<Reward[]>([]);
@@ -98,7 +66,6 @@ export default function ChildDashboard({ profile }: ChildDashboardProps) {
   const [message, setMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   
-  // 今日打卡、兑换、热力图
   const [todayCheckIns, setTodayCheckIns] = useState<TodayCheckIn[]>([]);
   const [todayRedemptions, setTodayRedemptions] = useState<TodayRedemption[]>([]);
   const [heatmapData, setHeatmapData] = useState<HeatmapData[]>([]);
@@ -547,7 +514,7 @@ export default function ChildDashboard({ profile }: ChildDashboardProps) {
           )}
         </div>
 
-        {/* ====== 今日打卡情况 ====== */}
+        {/* 今日打卡情况 */}
         <div className="mt-6 bg-white p-6 rounded-lg shadow">
           <h2 className="text-xl font-bold mb-4">📋 今日打卡情况</h2>
           {todayCheckIns.length === 0 ? (
@@ -573,7 +540,7 @@ export default function ChildDashboard({ profile }: ChildDashboardProps) {
           )}
         </div>
 
-        {/* ====== 今日兑换情况 ====== */}
+        {/* 今日兑换情况 */}
         <div className="mt-6 bg-white p-6 rounded-lg shadow">
           <h2 className="text-xl font-bold mb-4">🎁 今日兑换情况</h2>
           {todayRedemptions.length === 0 ? (
@@ -600,7 +567,7 @@ export default function ChildDashboard({ profile }: ChildDashboardProps) {
           )}
         </div>
 
-        {/* ====== 热力图 ====== */}
+        {/* 热力图 */}
         <div className="mt-6 bg-white p-6 rounded-lg shadow">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-bold">📊 我的打卡热力图</h2>
@@ -641,17 +608,9 @@ export default function ChildDashboard({ profile }: ChildDashboardProps) {
           </div>
 
           <div>
-            {/* 星期行 */}
             <div className="grid grid-cols-7 gap-1 mb-1 text-center text-xs text-gray-400">
-              <div>日</div>
-              <div>一</div>
-              <div>二</div>
-              <div>三</div>
-              <div>四</div>
-              <div>五</div>
-              <div>六</div>
+              <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
             </div>
-            {/* 日期网格 */}
             <div className="grid grid-cols-7 gap-1">
               {Array.from({ length: firstDay }).map((_, i) => (
                 <div key={`empty-${i}`} className="aspect-square"></div>
@@ -683,7 +642,6 @@ export default function ChildDashboard({ profile }: ChildDashboardProps) {
                 );
               })}
             </div>
-            {/* 图例 */}
             <div className="flex items-center gap-2 mt-3 text-xs text-gray-500">
               <span>少</span>
               <div className="w-4 h-4 bg-gray-100 rounded border border-gray-200"></div>
@@ -694,7 +652,6 @@ export default function ChildDashboard({ profile }: ChildDashboardProps) {
               <span>多</span>
               <span className="ml-2 text-gray-400">（悬停查看详情）</span>
             </div>
-            {/* 统计信息 */}
             <div className="mt-3 text-xs text-gray-400">
               当月打卡总次数: {heatmapData.reduce((sum, d) => sum + d.count, 0)} 次
               | 打卡天数: {heatmapData.filter(d => d.count > 0).length} 天

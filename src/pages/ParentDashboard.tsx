@@ -1,6 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
 import { useEffect, useState } from 'react';
-import React from 'react';
 
 interface ParentDashboardProps {
   profile: any;
@@ -50,45 +49,9 @@ interface HeatmapData {
   count: number;
 }
 
-// 热力图单元格组件
-function HeatmapCell({ date, count }: { date: string; count: number }) {
-  const [showTooltip, setShowTooltip] = useState(false);
-  
-  const getColor = () => {
-    if (count === 0) return 'bg-gray-100 hover:bg-gray-200';
-    if (count <= 2) return 'bg-green-200 hover:bg-green-300';
-    if (count <= 4) return 'bg-green-400 hover:bg-green-500';
-    if (count <= 6) return 'bg-green-600 hover:bg-green-700';
-    return 'bg-green-800 hover:bg-green-900';
-  };
-
-  const formatDate = (dateStr: string) => {
-    const d = new Date(dateStr);
-    return `${d.getMonth() + 1}月${d.getDate()}日`;
-  };
-
-  return (
-    <div
-      className={`aspect-square rounded ${getColor()} transition-all hover:scale-110 hover:shadow-lg cursor-default relative`}
-      onMouseEnter={() => setShowTooltip(true)}
-      onMouseLeave={() => setShowTooltip(false)}
-    >
-      {showTooltip && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap z-10 shadow-lg">
-          {formatDate(date)}: {count} 次打卡
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function ParentDashboard({ profile }: ParentDashboardProps) {
   const [children, setChildren] = useState<Child[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [selectedChild, setSelectedChild] = useState<string>('');
-  const [selectedTask, setSelectedTask] = useState<string>('');
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
   const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
   const [pendingRedemptions, setPendingRedemptions] = useState<any[]>([]);
   const [todayCheckIns, setTodayCheckIns] = useState<TodayCheckIn[]>([]);
@@ -125,7 +88,6 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
       console.log('✅ 找到孩子:', _data);
       setChildren(_data || []);
       if (_data && _data.length > 0) {
-        setSelectedChild(_data[0].id);
         setSelectedChildForDetail(_data[0].id);
       }
     }
@@ -140,7 +102,6 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
       console.error('获取任务列表失败:', error);
     } else {
       setTasks(_data || []);
-      if (_data && _data.length > 0) setSelectedTask(_data[0].id);
     }
   }
 
@@ -655,20 +616,10 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
   const totalTodayPoints = todayCheckIns.reduce((sum, item) => sum + item.points, 0);
   const totalTodayRedemptionPoints = todayRedemptions.reduce((sum, item) => sum + item.points_cost, 0);
 
-  // 获取当前月份的天数
-  const getDaysInMonth = (year: number, month: number) => {
-    return new Date(year, month + 1, 0).getDate();
-  };
-
-  // 获取当月第一天是星期几（0=周日，1=周一...）
-  const getFirstDayOfMonth = (year: number, month: number) => {
-    return new Date(year, month, 1).getDay();
-  };
-
   const year = heatmapMonth.getFullYear();
   const month = heatmapMonth.getMonth();
-  const daysInMonth = getDaysInMonth(year, month);
-  const firstDay = getFirstDayOfMonth(year, month);
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDay = new Date(year, month, 1).getDay();
   const today = new Date().toISOString().split('T')[0];
 
   return (
@@ -889,17 +840,9 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
             <p className="text-gray-500 text-center py-4">请选择孩子查看打卡热力图</p>
           ) : (
             <div>
-              {/* 星期行 */}
               <div className="grid grid-cols-7 gap-1 mb-1 text-center text-xs text-gray-400">
-                <div>日</div>
-                <div>一</div>
-                <div>二</div>
-                <div>三</div>
-                <div>四</div>
-                <div>五</div>
-                <div>六</div>
+                <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
               </div>
-              {/* 日期网格 */}
               <div className="grid grid-cols-7 gap-1">
                 {Array.from({ length: firstDay }).map((_, i) => (
                   <div key={`empty-${i}`} className="aspect-square"></div>
@@ -931,7 +874,6 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
                   );
                 })}
               </div>
-              {/* 图例 */}
               <div className="flex items-center gap-2 mt-3 text-xs text-gray-500">
                 <span>少</span>
                 <div className="w-4 h-4 bg-gray-100 rounded border border-gray-200"></div>
@@ -942,7 +884,6 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
                 <span>多</span>
                 <span className="ml-2 text-gray-400">（悬停查看详情）</span>
               </div>
-              {/* 统计信息 */}
               <div className="mt-3 text-xs text-gray-400">
                 当月打卡总次数: {heatmapData.reduce((sum, d) => sum + d.count, 0)} 次
                 | 打卡天数: {heatmapData.filter(d => d.count > 0).length} 天
