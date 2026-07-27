@@ -131,9 +131,11 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
   }
 
   async function fetchAllRedemptions() {
+    // 只查询 available 状态的奖励（可申请和已停用）
     const { data, error } = await supabase
       .from('redemptions')
       .select('*, children(name)')
+      .in('status', ['available'])
       .order('created_at', { ascending: false });
     if (error) {
       console.error('获取所有兑换失败:', error);
@@ -644,7 +646,7 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
   return (
     <div className="min-h-screen bg-gray-100">
       <nav className="bg-white shadow p-4 flex justify-between items-center">
-        <h1 className="text-xl font-bold text-blue-600">🐾 打卡宠物</h1>
+        <h1 className="text-xl font-bold text-blue-600">🐾 打卡宠物 </h1>
         <div className="flex items-center gap-4">
           <span className="text-sm text-gray-600">👋 家长</span>
           <button onClick={handleLogout} className="bg-red-500 text-white px-3 py-1 rounded text-sm">
@@ -1003,30 +1005,15 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
           ) : (
             <div className="space-y-2">
               {redemptions.map((r: any) => {
-                let statusText = '';
-                let statusColor = '';
-                
-                if (r.is_active === false) {
-                  statusText = '已停用';
-                  statusColor = 'text-red-400';
-                } else if (r.status === 'pending') {
-                  statusText = '待审批';
-                  statusColor = 'text-yellow-600';
-                } else if (r.status === 'confirmed') {
-                  statusText = '已兑换';
-                  statusColor = 'text-green-600';
-                } else if (r.status === 'cancelled') {
-                  statusText = '已取消';
-                  statusColor = 'text-red-500';
-                } else {
-                  statusText = '可申请';
-                  statusColor = 'text-blue-600';
-                }
+                // 确定显示状态
+                const isActive = r.is_active !== false;
+                const statusText = isActive ? '可申请' : '已停用';
+                const statusColor = isActive ? 'text-blue-600' : 'text-red-400';
 
                 return (
                   <div key={r.id} className="flex items-center justify-between border-b pb-2">
                     <div className="flex items-center gap-3">
-                      <span className={`text-sm font-medium ${r.is_active === false ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+                      <span className={`text-sm font-medium ${isActive ? 'text-gray-800' : 'text-gray-400 line-through'}`}>
                         {r.reward_name}
                       </span>
                       <span className="text-xs text-blue-600 font-bold">{r.points_cost}分</span>
@@ -1036,7 +1023,7 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
                       </span>
                     </div>
                     <div className="flex gap-1">
-                      {r.is_active !== false && r.status === 'available' && (
+                      {isActive ? (
                         <>
                           <button
                             onClick={() => {
@@ -1065,8 +1052,7 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
                             删除
                           </button>
                         </>
-                      )}
-                      {r.is_active === false && (
+                      ) : (
                         <>
                           <button
                             onClick={() => handleToggleRedemption(r.id, false)}
@@ -1081,12 +1067,6 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
                             删除
                           </button>
                         </>
-                      )}
-                      {r.status === 'pending' && (
-                        <span className="text-xs text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded">等待审批</span>
-                      )}
-                      {(r.status === 'confirmed' || r.status === 'cancelled') && (
-                        <span className="text-xs text-gray-400">-</span>
                       )}
                     </div>
                   </div>
