@@ -58,7 +58,7 @@ interface HeatmapData {
 }
 
 // 热力图单元格组件（支持悬停和点击）
-function HeatmapCell({ date, count, isToday, day, month }: { date: string; count: number; isToday: boolean; day: number; month: number }) {
+function HeatmapCell({ _date, count, isToday, day, month }: { _date: string; count: number; isToday: boolean; day: number; month: number }) {
   const [showDetail, setShowDetail] = useState(false);
   
   let colorClass = 'bg-gray-100 hover:bg-gray-200';
@@ -382,11 +382,10 @@ export default function ChildDashboard({ profile }: ChildDashboardProps) {
     setLoading(true);
     setMessage('');
 
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('redemptions')
       .update({ status: 'pending' })
-      .eq('id', rewardId)
-      .select();
+      .eq('id', rewardId);
 
     if (error) {
       setMessage('申请兑换失败: ' + error.message);
@@ -678,7 +677,7 @@ export default function ChildDashboard({ profile }: ChildDashboardProps) {
                 return (
                   <HeatmapCell 
                     key={dateStr}
-                    date={dateStr}
+                    _date={dateStr}
                     count={count}
                     isToday={isToday}
                     day={day}
