@@ -34,7 +34,7 @@ interface PendingRequest {
 interface TodayCheckIn {
   task_name: string;
   points: number;
-  check_in_date: string;
+  count: number;
 }
 
 interface TodayRedemption {
@@ -134,7 +134,6 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
     const { data, error } = await supabase
       .from('redemptions')
       .select('*, children(name)')
-      .eq('is_active', true)
       .order('created_at', { ascending: false });
     if (error) {
       console.error('获取所有兑换失败:', error);
@@ -154,14 +153,34 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
 
     if (error) {
       console.error('获取今日打卡记录失败:', error);
-    } else {
-      const formatted = (data || []).map((item: any) => ({
-        task_name: item.tasks?.name || '未知任务',
-        points: item.points || 0,
-        check_in_date: item.check_in_date
-      }));
-      setTodayCheckIns(formatted);
+      return;
     }
+
+    const taskMap: Record<string, { task_name: string; total_points: number; count: number }> = {};
+    
+    (data || []).forEach((item: any) => {
+      const taskName = item.tasks?.name || '未知任务';
+      const points = item.points || 0;
+      
+      if (taskMap[taskName]) {
+        taskMap[taskName].total_points += points;
+        taskMap[taskName].count += 1;
+      } else {
+        taskMap[taskName] = {
+          task_name: taskName,
+          total_points: points,
+          count: 1,
+        };
+      }
+    });
+
+    const formatted: TodayCheckIn[] = Object.values(taskMap).map(item => ({
+      task_name: item.task_name,
+      points: item.total_points,
+      count: item.count,
+    }));
+
+    setTodayCheckIns(formatted);
   }
 
   async function fetchTodayRedemptions(childId: string) {
@@ -339,16 +358,24 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
   }
 
   async function handleDeleteRedemption(id: string) {
-    if (!confirm('确定要删除这个兑换奖励吗？')) return;
+    console.log('🔍 删除按钮被点击，ID:', id);
+    
+    if (!confirm('确定要删除这个兑换奖励吗？')) {
+      console.log('❌ 用户取消删除');
+      return;
+    }
 
+    console.log('🗑️ 开始删除...');
     const { error } = await supabase
       .from('redemptions')
       .delete()
       .eq('id', id);
 
     if (error) {
+      console.error('❌ 删除失败:', error);
       alert('删除失败: ' + error.message);
     } else {
+      console.log('✅ 删除成功');
       alert('已删除兑换奖励');
       await fetchAllRedemptions();
     }
@@ -625,7 +652,7 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
   return (
     <div className="min-h-screen bg-gray-100">
       <nav className="bg-white shadow p-4 flex justify-between items-center">
-        <h1 className="text-xl font-bold text-blue-600">🐾 打卡宠物</h1>
+        <h1 className="text-xl font-bold text-blue-600">🐾 打卡宠物 </h1>
         <div className="flex items-center gap-4">
           <span className="text-sm text-gray-600">👋 家长</span>
           <button onClick={handleLogout} className="bg-red-500 text-white px-3 py-1 rounded text-sm">
@@ -746,7 +773,10 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
               <div className="space-y-2">
                 {todayCheckIns.map((item, index) => (
                   <div key={index} className="flex items-center justify-between border-b pb-2">
-                    <span className="text-gray-700">{item.task_name}</span>
+                    <div>
+                      <span className="text-gray-700">{item.task_name}</span>
+                      <span className="text-xs text-gray-400 ml-2">× {item.count} 次</span>
+                    </div>
                     <span className="text-green-600 font-medium">+{item.points}分</span>
                   </div>
                 ))}
@@ -980,48 +1010,102 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
             <p className="text-gray-500">暂无兑换奖励，点击"添加兑换奖励"创建</p>
           ) : (
             <div className="space-y-2">
-              {redemptions.map((r: any) => (
-                <div key={r.id} className="flex items-center justify-between border-b pb-2">
-                  <div className="flex items-center gap-3">
-                    <span className={`text-sm font-medium ${r.is_active !== false ? 'text-gray-800' : 'text-gray-400 line-through'}`}>
-                      {r.reward_name}
-                    </span>
-                    <span className="text-xs text-blue-600 font-bold">{r.points_cost}分</span>
-                    <span className="text-xs text-gray-400">👶 {r.children?.name || '未知孩子'}</span>
-                    <span className={`text-xs ${r.is_active !== false ? 'text-green-600' : 'text-red-400'}`}>
-                      {r.is_active !== false ? '● 启用' : '○ 停用'}
-                    </span>
+              {redemptions.map((r: any) => {
+                let statusText = '';
+                let statusColor = '';
+                
+                if (r.is_active === false) {
+                  statusText = '已停用';
+                  statusColor = 'text-red-400';
+                } else if (r.status === 'pending') {
+                  statusText = '待审批';
+                  statusColor = 'text-yellow-600';
+                } else if (r.status === 'confirmed') {
+                  statusText = '已兑换';
+                  statusColor = 'text-green-600';
+                } else if (r.status === 'cancelled') {
+                  statusText = '已取消';
+                  statusColor = 'text-red-500';
+                } else {
+                  statusText = '可申请';
+                  statusColor = 'text-blue-600';
+                }
+
+                return (
+                  <div key={r.id} className="flex items-center justify-between border-b pb-2">
+                    <div className="flex items-center gap-3">
+                      <span className={`text-sm font-medium ${r.is_active === false ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+                        {r.reward_name}
+                      </span>
+                      <span className="text-xs text-blue-600 font-bold">{r.points_cost}分</span>
+                      <span className="text-xs text-gray-400">👶 {r.children?.name || '未知孩子'}</span>
+                      <span className={`text-xs font-medium ${statusColor}`}>
+                        {statusText}
+                      </span>
+                    </div>
+                    <div className="flex gap-1">
+                      {r.is_active !== false && r.status === 'available' && (
+                        <>
+                          <button
+                            onClick={() => {
+                              const newName = prompt('修改奖励名称：', r.reward_name);
+                              if (newName && newName.trim()) {
+                                const newCost = parseInt(prompt('修改所需积分：', String(r.points_cost)) || '0');
+                                if (!isNaN(newCost) && newCost > 0) {
+                                  handleEditRedemption(r.id, newName.trim(), newCost);
+                                }
+                              }
+                            }}
+                            className="text-xs bg-yellow-500 text-white px-2 py-0.5 rounded hover:bg-yellow-600"
+                          >
+                            编辑
+                          </button>
+                          <button
+                            onClick={() => handleToggleRedemption(r.id, true)}
+                            className="text-xs bg-gray-500 text-white px-2 py-0.5 rounded hover:bg-gray-600"
+                          >
+                            停用
+                          </button>
+                          <button
+                            onClick={() => {
+                              console.log('🔍 删除按钮点击:', r.id);
+                              handleDeleteRedemption(r.id);
+                            }}
+                            className="text-xs bg-red-500 text-white px-2 py-0.5 rounded hover:bg-red-600"
+                          >
+                            删除
+                          </button>
+                        </>
+                      )}
+                      {r.is_active === false && (
+                        <>
+                          <button
+                            onClick={() => handleToggleRedemption(r.id, false)}
+                            className="text-xs bg-green-500 text-white px-2 py-0.5 rounded hover:bg-green-600"
+                          >
+                            启用
+                          </button>
+                          <button
+                            onClick={() => {
+                              console.log('🔍 删除按钮点击:', r.id);
+                              handleDeleteRedemption(r.id);
+                            }}
+                            className="text-xs bg-red-500 text-white px-2 py-0.5 rounded hover:bg-red-600"
+                          >
+                            删除
+                          </button>
+                        </>
+                      )}
+                      {r.status === 'pending' && (
+                        <span className="text-xs text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded">等待审批</span>
+                      )}
+                      {(r.status === 'confirmed' || r.status === 'cancelled') && (
+                        <span className="text-xs text-gray-400">-</span>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex gap-1">
-                    <button
-                      onClick={() => {
-                        const newName = prompt('修改奖励名称：', r.reward_name);
-                        if (newName && newName.trim()) {
-                          const newCost = parseInt(prompt('修改所需积分：', String(r.points_cost)) || '0');
-                          if (!isNaN(newCost) && newCost > 0) {
-                            handleEditRedemption(r.id, newName.trim(), newCost);
-                          }
-                        }
-                      }}
-                      className="text-xs bg-yellow-500 text-white px-2 py-0.5 rounded hover:bg-yellow-600"
-                    >
-                      编辑
-                    </button>
-                    <button
-                      onClick={() => handleToggleRedemption(r.id, r.is_active !== false)}
-                      className={`text-xs px-2 py-0.5 rounded text-white ${r.is_active !== false ? 'bg-gray-500 hover:bg-gray-600' : 'bg-green-500 hover:bg-green-600'}`}
-                    >
-                      {r.is_active !== false ? '停用' : '启用'}
-                    </button>
-                    <button
-                      onClick={() => handleDeleteRedemption(r.id)}
-                      className="text-xs bg-red-500 text-white px-2 py-0.5 rounded hover:bg-red-600"
-                    >
-                      删除
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

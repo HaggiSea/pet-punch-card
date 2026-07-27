@@ -42,7 +42,7 @@ interface PendingRequest {
 interface TodayCheckIn {
   task_name: string;
   points: number;
-  check_in_date: string;
+  count: number;
 }
 
 interface TodayRedemption {
@@ -222,14 +222,35 @@ export default function ChildDashboard({ profile }: ChildDashboardProps) {
 
     if (error) {
       console.error('获取今日打卡记录失败:', error);
-    } else {
-      const formatted = (data || []).map((item: any) => ({
-        task_name: item.tasks?.name || '未知任务',
-        points: item.points || 0,
-        check_in_date: item.check_in_date
-      }));
-      setTodayCheckIns(formatted);
+      return;
     }
+
+    // 按任务名称分组汇总
+    const taskMap: Record<string, { task_name: string; total_points: number; count: number }> = {};
+    
+    (data || []).forEach((item: any) => {
+      const taskName = item.tasks?.name || '未知任务';
+      const points = item.points || 0;
+      
+      if (taskMap[taskName]) {
+        taskMap[taskName].total_points += points;
+        taskMap[taskName].count += 1;
+      } else {
+        taskMap[taskName] = {
+          task_name: taskName,
+          total_points: points,
+          count: 1,
+        };
+      }
+    });
+
+    const formatted: TodayCheckIn[] = Object.values(taskMap).map(item => ({
+      task_name: item.task_name,
+      points: item.total_points,
+      count: item.count,
+    }));
+
+    setTodayCheckIns(formatted);
   }
 
   async function fetchTodayRedemptions() {
@@ -527,7 +548,10 @@ export default function ChildDashboard({ profile }: ChildDashboardProps) {
               <div className="space-y-2">
                 {todayCheckIns.map((item, index) => (
                   <div key={index} className="flex items-center justify-between border-b pb-2">
-                    <span className="text-gray-700">{item.task_name}</span>
+                    <div>
+                      <span className="text-gray-700">{item.task_name}</span>
+                      <span className="text-xs text-gray-400 ml-2">× {item.count} 次</span>
+                    </div>
                     <span className="text-green-600 font-medium">+{item.points}分</span>
                   </div>
                 ))}
