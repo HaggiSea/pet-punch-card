@@ -58,7 +58,7 @@ interface HeatmapData {
 }
 
 // 热力图单元格组件（支持悬停和点击）
-function HeatmapCell({ _date, count, isToday, day, month }: { _date: string; count: number; isToday: boolean; day: number; month: number }) {
+function HeatmapCell({ count, isToday, day, month }: { count: number; isToday: boolean; day: number; month: number }) {
   const [showDetail, setShowDetail] = useState(false);
   
   let colorClass = 'bg-gray-100 hover:bg-gray-200';
@@ -677,7 +677,6 @@ export default function ChildDashboard({ profile }: ChildDashboardProps) {
                 return (
                   <HeatmapCell 
                     key={dateStr}
-                    _date={dateStr}
                     count={count}
                     isToday={isToday}
                     day={day}
