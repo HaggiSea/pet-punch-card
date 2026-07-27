@@ -625,7 +625,7 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
   return (
     <div className="min-h-screen bg-gray-100">
       <nav className="bg-white shadow p-4 flex justify-between items-center">
-        <h1 className="text-xl font-bold text-blue-600">🐾 打卡宠物 · 家长端</h1>
+        <h1 className="text-xl font-bold text-blue-600">🐾 打卡宠物</h1>
         <div className="flex items-center gap-4">
           <span className="text-sm text-gray-600">👋 家长</span>
           <button onClick={handleLogout} className="bg-red-500 text-white px-3 py-1 rounded text-sm">
