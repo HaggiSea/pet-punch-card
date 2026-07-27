@@ -49,6 +49,41 @@ interface HeatmapData {
   count: number;
 }
 
+// 热力图单元格组件（支持悬停和点击）
+function HeatmapCell({ date, count, isToday, day, month }: { date: string; count: number; isToday: boolean; day: number; month: number }) {
+  const [showDetail, setShowDetail] = useState(false);
+  
+  let colorClass = 'bg-gray-100 hover:bg-gray-200';
+  if (count === 0) colorClass = 'bg-gray-100 hover:bg-gray-200';
+  else if (count <= 2) colorClass = 'bg-green-200 hover:bg-green-300';
+  else if (count <= 4) colorClass = 'bg-green-400 hover:bg-green-500';
+  else if (count <= 6) colorClass = 'bg-green-600 hover:bg-green-700';
+  else colorClass = 'bg-green-800 hover:bg-green-900';
+
+  const handleClick = () => {
+    setShowDetail(true);
+    setTimeout(() => setShowDetail(false), 3000);
+  };
+
+  return (
+    <div
+      className={`aspect-square rounded ${colorClass} transition-all hover:scale-110 hover:shadow-lg cursor-pointer relative ${isToday ? 'ring-2 ring-blue-500 ring-offset-1' : ''}`}
+      onClick={handleClick}
+      onMouseEnter={() => setShowDetail(true)}
+      onMouseLeave={() => setShowDetail(false)}
+    >
+      <span className="absolute inset-0 flex items-center justify-center text-[8px] text-gray-600 opacity-30">
+        {day}
+      </span>
+      {showDetail && (
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap z-10 shadow-lg pointer-events-none">
+          {month + 1}月{day}日: {count} 次打卡
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ParentDashboard({ profile }: ParentDashboardProps) {
   const [children, setChildren] = useState<Child[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -131,11 +166,9 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
   }
 
   async function fetchAllRedemptions() {
-    // 只查询 available 状态的奖励（可申请和已停用）
     const { data, error } = await supabase
       .from('redemptions')
       .select('*, children(name)')
-      .in('status', ['available'])
       .order('created_at', { ascending: false });
     if (error) {
       console.error('获取所有兑换失败:', error);
@@ -646,7 +679,7 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
   return (
     <div className="min-h-screen bg-gray-100">
       <nav className="bg-white shadow p-4 flex justify-between items-center">
-        <h1 className="text-xl font-bold text-blue-600">🐾 打卡宠物 </h1>
+        <h1 className="text-xl font-bold text-blue-600">🐾 打卡宠物</h1>
         <div className="flex items-center gap-4">
           <span className="text-sm text-gray-600">👋 家长</span>
           <button onClick={handleLogout} className="bg-red-500 text-white px-3 py-1 rounded text-sm">
@@ -878,23 +911,15 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
                   const count = data?.count || 0;
                   const isToday = dateStr === today;
                   
-                  let colorClass = 'bg-gray-100 hover:bg-gray-200';
-                  if (count === 0) colorClass = 'bg-gray-100 hover:bg-gray-200';
-                  else if (count <= 2) colorClass = 'bg-green-200 hover:bg-green-300';
-                  else if (count <= 4) colorClass = 'bg-green-400 hover:bg-green-500';
-                  else if (count <= 6) colorClass = 'bg-green-600 hover:bg-green-700';
-                  else colorClass = 'bg-green-800 hover:bg-green-900';
-
                   return (
-                    <div
+                    <HeatmapCell 
                       key={dateStr}
-                      className={`aspect-square rounded ${colorClass} transition-all hover:scale-110 hover:shadow-lg cursor-default relative ${isToday ? 'ring-2 ring-blue-500 ring-offset-1' : ''}`}
-                      title={`${month + 1}月${day}日: ${count} 次打卡`}
-                    >
-                      <span className="absolute inset-0 flex items-center justify-center text-[8px] text-gray-600 opacity-30">
-                        {day}
-                      </span>
-                    </div>
+                      date={dateStr}
+                      count={count}
+                      isToday={isToday}
+                      day={day}
+                      month={month}
+                    />
                   );
                 })}
               </div>
@@ -906,7 +931,7 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
                 <div className="w-4 h-4 bg-green-600 rounded"></div>
                 <div className="w-4 h-4 bg-green-800 rounded"></div>
                 <span>多</span>
-                <span className="ml-2 text-gray-400">（悬停查看详情）</span>
+                <span className="ml-2 text-gray-400">（点击或悬停查看详情）</span>
               </div>
               <div className="mt-3 text-xs text-gray-400">
                 当月打卡总次数: {heatmapData.reduce((sum, d) => sum + d.count, 0)} 次
@@ -1005,7 +1030,6 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
           ) : (
             <div className="space-y-2">
               {redemptions.map((r: any) => {
-                // 确定显示状态
                 const isActive = r.is_active !== false;
                 const statusText = isActive ? '可申请' : '已停用';
                 const statusColor = isActive ? 'text-blue-600' : 'text-red-400';
