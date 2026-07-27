@@ -60,25 +60,6 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
   const [redemptions, setRedemptions] = useState<any[]>([]);
   const [heatmapData, setHeatmapData] = useState<HeatmapData[]>([]);
   const [heatmapMonth, setHeatmapMonth] = useState<Date>(new Date());
-  const [lastPendingCount, setLastPendingCount] = useState({ checkIns: 0, redemptions: 0 });
-
-  // 请求通知权限
-  useEffect(() => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
-  }, []);
-
-  // 轮询检查待审批申请
-  useEffect(() => {
-    checkAndNotify();
-
-    const interval = setInterval(() => {
-      checkAndNotify();
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, []);
 
   useEffect(() => {
     fetchChildren();
@@ -133,7 +114,6 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
       console.error('获取待审批申请失败:', error);
     } else {
       setPendingRequests(data || []);
-      setLastPendingCount(prev => ({ ...prev, checkIns: data?.length || 0 }));
     }
   }
 
@@ -147,7 +127,6 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
       console.error('获取待审批兑换失败:', error);
     } else {
       setPendingRedemptions(data || []);
-      setLastPendingCount(prev => ({ ...prev, redemptions: data?.length || 0 }));
     }
   }
 
@@ -260,61 +239,6 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
     }
 
     setHeatmapData(result);
-  }
-
-  // ====== 通知功能 ======
-  async function checkAndNotify() {
-    try {
-      const [checkInsResult, redemptionsResult] = await Promise.all([
-        supabase.from('check_in_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-        supabase.from('redemptions').select('id', { count: 'exact', head: true }).eq('status', 'pending')
-      ]);
-
-      const checkInCount = checkInsResult.count || 0;
-      const redemptionCount = redemptionsResult.count || 0;
-
-      if (checkInCount > lastPendingCount.checkIns) {
-        sendNotification(
-          '📋 新的打卡审批申请',
-          `有 ${checkInCount - lastPendingCount.checkIns} 个新的打卡申请等待审批`
-        );
-      }
-
-      if (redemptionCount > lastPendingCount.redemptions) {
-        sendNotification(
-          '🎁 新的兑换审批申请',
-          `有 ${redemptionCount - lastPendingCount.redemptions} 个新的兑换申请等待审批`
-        );
-      }
-
-      setLastPendingCount({
-        checkIns: checkInCount,
-        redemptions: redemptionCount
-      });
-    } catch (error) {
-      console.error('检查待审批通知失败:', error);
-    }
-  }
-
-  function sendNotification(title: string, body: string) {
-    if (!('Notification' in window)) {
-      return;
-    }
-
-    if (Notification.permission === 'granted') {
-      if (document.visibilityState === 'visible') {
-        return;
-      }
-
-      new Notification(title, {
-        body: body,
-        icon: '/pet-icon.png',
-        tag: 'pending-approval',
-        requireInteraction: true,
-      });
-    } else if (Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
   }
 
   // ====== 兑换奖励管理 ======
@@ -434,24 +358,16 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
   }
 
   async function handleDeleteRedemption(id: string) {
-    console.log('🔍 删除按钮被点击，ID:', id);
-    
-    if (!confirm('确定要删除这个兑换奖励吗？')) {
-      console.log('❌ 用户取消删除');
-      return;
-    }
+    if (!confirm('确定要删除这个兑换奖励吗？')) return;
 
-    console.log('🗑️ 开始删除...');
     const { error } = await supabase
       .from('redemptions')
       .delete()
       .eq('id', id);
 
     if (error) {
-      console.error('❌ 删除失败:', error);
       alert('删除失败: ' + error.message);
     } else {
-      console.log('✅ 删除成功');
       alert('已删除兑换奖励');
       await fetchAllRedemptions();
     }
@@ -728,7 +644,7 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
   return (
     <div className="min-h-screen bg-gray-100">
       <nav className="bg-white shadow p-4 flex justify-between items-center">
-        <h1 className="text-xl font-bold text-blue-600">🐾 打卡宠物</h1>
+        <h1 className="text-xl font-bold text-blue-600">🐾 打卡宠物 · 家长端</h1>
         <div className="flex items-center gap-4">
           <span className="text-sm text-gray-600">👋 家长</span>
           <button onClick={handleLogout} className="bg-red-500 text-white px-3 py-1 rounded text-sm">
@@ -1143,10 +1059,7 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
                             停用
                           </button>
                           <button
-                            onClick={() => {
-                              console.log('🔍 删除按钮点击:', r.id);
-                              handleDeleteRedemption(r.id);
-                            }}
+                            onClick={() => handleDeleteRedemption(r.id)}
                             className="text-xs bg-red-500 text-white px-2 py-0.5 rounded hover:bg-red-600"
                           >
                             删除
@@ -1162,10 +1075,7 @@ export default function ParentDashboard({ profile }: ParentDashboardProps) {
                             启用
                           </button>
                           <button
-                            onClick={() => {
-                              console.log('🔍 删除按钮点击:', r.id);
-                              handleDeleteRedemption(r.id);
-                            }}
+                            onClick={() => handleDeleteRedemption(r.id)}
                             className="text-xs bg-red-500 text-white px-2 py-0.5 rounded hover:bg-red-600"
                           >
                             删除
