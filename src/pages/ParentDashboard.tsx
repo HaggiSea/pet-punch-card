@@ -610,58 +610,6 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
           </div>
         </section>
 
-        {/* 帮孩子打卡：孩子就在旁边完成了任务，家长直接加分，不必等孩子申请 */}
-        {selectedChildForDetail && (
-          <section className="bg-white p-6 rounded-lg shadow">
-            <div className="flex justify-between items-center mb-1">
-              <h3 className="text-lg font-bold">
-                ⚡ 帮 {children.find((c) => c.id === selectedChildForDetail)?.name} 打卡
-              </h3>
-              <span className="text-xs text-gray-400">点一下立即加分</span>
-            </div>
-            <p className="text-sm text-gray-500 mb-4">
-              孩子当面完成了任务就直接点，不用等他自己申请。
-            </p>
-            {tasks.length === 0 ? (
-              <p className="text-gray-400 text-sm">暂无启用中的任务，先在下方添加任务</p>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {tasks.map((t) => {
-                  const doneCount = todayCountByTask[t.id] || 0;
-                  const isBusy = checkingInTaskId === t.id;
-                  return (
-                    <button
-                      key={t.id}
-                      onClick={() =>
-                        handleParentCheckIn(selectedChildForDetail, t.id, t.name, t.points)
-                      }
-                      disabled={Boolean(checkingInTaskId)}
-                      className={`flex items-center justify-between border rounded-lg px-4 py-3 text-left transition ${
-                        checkingInTaskId
-                          ? 'opacity-60 cursor-not-allowed border-gray-200'
-                          : 'border-gray-200 hover:border-green-400 hover:bg-green-50'
-                      }`}
-                    >
-                      <div className="min-w-0">
-                        <div className="font-medium truncate">{t.name}</div>
-                        <div className="text-xs text-gray-500">
-                          {t.category}
-                          {doneCount > 0 && (
-                            <span className="text-orange-500 ml-2">今日已打 {doneCount} 次</span>
-                          )}
-                        </div>
-                      </div>
-                      <span className="text-green-600 font-bold whitespace-nowrap ml-3">
-                        {isBusy ? '...' : `+${t.points}`}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-        )}
-
         {/* 待审批事项 */}
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* 打卡审批 */}
@@ -858,6 +806,26 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
                     </span>
                   </div>
                   <div className="flex gap-1">
+                    {/* 代打卡：孩子当面完成任务时家长直接加分，不必等孩子申请 */}
+                    {t.is_active && (
+                      <button
+                        onClick={() =>
+                          handleParentCheckIn(selectedChildForDetail, t.id, t.name, t.points)
+                        }
+                        disabled={Boolean(checkingInTaskId) || !selectedChildForDetail}
+                        title={
+                          selectedChildForDetail
+                            ? `给 ${children.find((c) => c.id === selectedChildForDetail)?.name} 记一次`
+                            : '请先在上方选择一个孩子'
+                        }
+                        className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                      >
+                        {checkingInTaskId === t.id ? '...' : '打卡'}
+                        {(todayCountByTask[t.id] || 0) > 0 && (
+                          <span className="ml-1 opacity-80">({todayCountByTask[t.id]})</span>
+                        )}
+                      </button>
+                    )}
                     <button
                       onClick={() => {
                         const name = prompt('任务名称：', t.name);
