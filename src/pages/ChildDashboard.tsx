@@ -1,8 +1,9 @@
 import { supabase } from '../lib/supabaseClient';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { todayLocal, monthStart, monthEnd, startOfTodayIso } from '../lib/dates';
 import { levelProgress } from '../lib/levels';
 import { getPetLabel, getPetStage } from '../lib/pets';
+import { sortRewardsForDisplay, sortTasksForDisplay } from '../lib/ordering';
 import type {
   Profile,
   Child,
@@ -315,6 +316,9 @@ export default function ChildDashboard({ profile }: { profile: Profile }) {
   // 那一列是 DB 冗余存储，历史上是 0 基（Lv.0），迁移未执行或将来漏刷时会显示错等级；
   // 积分才是唯一真相，派生值就地算不会有第二份真相。
   const petLevel = progress.level;
+  // 与家长端用同一套排序规则，两端看到的顺序才一致
+  const sortedTasks = useMemo(() => sortTasksForDisplay(tasks), [tasks]);
+  const sortedRewards = useMemo(() => sortRewardsForDisplay(rewards), [rewards]);
   // 形象按等级取。宠物档案还没建好时给个占位，下面 child 为空的分支不会用到它
   const petStage = getPetStage(child?.pet_type || '', petLevel);
 
@@ -389,7 +393,7 @@ export default function ChildDashboard({ profile }: { profile: Profile }) {
                 <p className="text-gray-400 text-sm">暂无任务，让家长添加吧</p>
               ) : (
                 <div className="space-y-2">
-                  {tasks.map((task) => (
+                  {sortedTasks.map((task) => (
                     <div key={task.id} className="flex items-center justify-between border-b pb-2">
                       <div>
                         <span className="font-medium">{task.name}</span>
@@ -430,7 +434,7 @@ export default function ChildDashboard({ profile }: { profile: Profile }) {
                 <p className="text-gray-400 text-sm">暂无可用奖励，去打卡赚积分吧！</p>
               ) : (
                 <div className="space-y-2">
-                  {rewards.map((r) => {
+                  {sortedRewards.map((r) => {
                     const isPending = pendingRewardIds.has(r.id);
                     const affordable = child.total_score >= r.points_cost;
                     const canApply = !isPending && affordable && !busy;

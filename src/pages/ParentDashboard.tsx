@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { todayLocal, monthStart, monthEnd, startOfTodayIso } from '../lib/dates';
 import type {
   Profile,
@@ -16,6 +16,7 @@ import type {
 import Heatmap from '../components/Heatmap';
 import { getPetStage, PET_KINDS, PET_TYPES } from '../lib/pets';
 import { levelForScore, MIN_LEVEL } from '../lib/levels';
+import { sortRewardsForDisplay, sortTasksForDisplay } from '../lib/ordering';
 
 export default function ParentDashboard({ profile }: { profile: Profile }) {
   const [children, setChildren] = useState<Child[]>([]);
@@ -37,6 +38,10 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
 
   // 家长首次进入默认看第一个孩子：这是派生值，不需要用 effect 回写 state
   const selectedChildForDetail = selectedChildId || children[0]?.id || '';
+
+  // 显示顺序是派生值，新增/编辑后重新渲染就自动排好，不用在每个写操作里维护
+  const sortedTasks = useMemo(() => sortTasksForDisplay(tasks), [tasks]);
+  const sortedRewards = useMemo(() => sortRewardsForDisplay(rewards), [rewards]);
 
   // 加载子项
   useEffect(() => {
@@ -868,7 +873,7 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
             <p className="text-gray-400 text-sm">暂无任务</p>
           ) : (
             <div className="space-y-2">
-              {tasks.map((t) => (
+              {sortedTasks.map((t) => (
                 <div key={t.id} className="flex items-center justify-between border-b pb-2">
                   <div className="flex items-center gap-3">
                     <span className={`font-medium ${t.is_active ? 'text-gray-800' : 'text-gray-400 line-through'}`}>
@@ -974,7 +979,7 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
             <p className="text-gray-400 text-sm">暂无奖励</p>
           ) : (
             <div className="space-y-2">
-              {rewards.map((r) => (
+              {sortedRewards.map((r) => (
                 <div key={r.id} className="flex items-center justify-between border-b pb-2">
                   <div className="flex items-center gap-3">
                     <span className={`font-medium ${r.is_active ? 'text-gray-800' : 'text-gray-400 line-through'}`}>
