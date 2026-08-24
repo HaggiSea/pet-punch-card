@@ -635,32 +635,34 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
 
   return (
     <div className="min-h-screen bg-blue-50">
-      <nav className="bg-white shadow p-4 flex justify-between items-center">
-        <h1 className="text-xl font-bold text-blue-600">👨‍👩‍👦 家长后台</h1>
-        <div className="flex items-center gap-4 text-sm">
-          <span className="text-gray-500">家庭：{profile.username}</span>
+      {/* 顶栏窄屏收窄内边距，标题降一号，避免和右侧「家庭/退出」挤在一起 */}
+      <nav className="sticky top-0 z-30 flex items-center justify-between gap-2 bg-white px-3 py-3 shadow sm:px-4 sm:py-4">
+        <h1 className="truncate text-base font-bold text-blue-600 sm:text-xl">👨‍👩‍👦 家长后台</h1>
+        <div className="flex flex-none items-center gap-2 text-sm sm:gap-4">
+          {/* 用户名在窄屏没必要占位，隐藏后「退出」按钮才有舒展空间 */}
+          <span className="hidden truncate text-gray-500 sm:inline">家庭：{profile.username}</span>
           <button
             onClick={handleLogout}
-            className="bg-red-500 text-white px-3 py-1 rounded text-sm"
+            className="rounded bg-red-500 px-3 py-1.5 text-sm text-white active:bg-red-600"
           >
             退出
           </button>
         </div>
       </nav>
 
-      <div className="p-6 max-w-5xl mx-auto space-y-6">
+      <div className="mx-auto max-w-5xl space-y-4 p-3 pb-10 sm:space-y-6 sm:p-6">
         {/* 孩子列表 */}
-        <section className="bg-white p-6 rounded-lg shadow">
+        <section className="bg-white p-4 sm:p-6 rounded-xl shadow">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold">👶 家庭成员</h2>
+            <h2 className="text-base font-bold sm:text-xl">👶 家庭成员</h2>
             <button
               onClick={handleAddChild}
-              className="bg-green-500 text-white px-3 py-1 rounded text-sm hover:bg-green-600"
+              className="bg-green-500 text-white px-3 py-1.5 rounded text-sm hover:bg-green-600"
             >
               + 添加孩子
             </button>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 sm:gap-4">
             {children.map((c) => (
               <button
                 key={c.id}
@@ -691,10 +693,10 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
         </section>
 
         {/* 待审批事项 */}
-        <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <section className="grid grid-cols-1 gap-4 lg:grid-cols-2 sm:gap-6">
           {/* 打卡审批 */}
-          <div className="bg-white p-6 rounded-lg shadow">
-            <h3 className="text-lg font-bold mb-4 flex items-center justify-between">
+          <div className="bg-white p-4 sm:p-6 rounded-xl shadow">
+            <h3 className="mb-3 flex items-center justify-between text-base font-bold sm:mb-4 sm:text-lg">
               <span>⏳ 打卡审批</span>
               <span className="text-sm bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
                 {pendingRequests.length}
@@ -707,7 +709,7 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
                 {pendingRequests.map((req) => (
                   <div
                     key={req.id}
-                    className="border rounded-lg p-4 flex items-center justify-between bg-gray-50"
+                    className="flex flex-col gap-2 rounded-lg border bg-gray-50 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4"
                   >
                     <div>
                       <p className="font-medium">{req.children?.name || '孩子'}</p>
@@ -723,13 +725,13 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
                         onClick={() =>
                           handleApproveCheckIn(req.id)
                         }
-                        className="bg-green-500 text-white px-3 py-1 rounded text-sm"
+                        className="bg-green-500 text-white px-3 py-1.5 rounded text-sm"
                       >
                         ✅ 同意
                       </button>
                       <button
                         onClick={() => handleRejectCheckIn(req.id)}
-                        className="bg-red-500 text-white px-3 py-1 rounded text-sm"
+                        className="bg-red-500 text-white px-3 py-1.5 rounded text-sm"
                       >
                         ❌ 拒绝
                       </button>
@@ -741,8 +743,8 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
           </div>
 
           {/* 兑换审批 */}
-          <div className="bg-white p-6 rounded-lg shadow">
-            <h3 className="text-lg font-bold mb-4 flex items-center justify-between">
+          <div className="bg-white p-4 sm:p-6 rounded-xl shadow">
+            <h3 className="mb-3 flex items-center justify-between text-base font-bold sm:mb-4 sm:text-lg">
               <span>🎁 兑换审批</span>
               <span className="text-sm bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">
                 {pendingRedemptions.length}
@@ -755,7 +757,7 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
                 {pendingRedemptions.map((red) => (
                   <div
                     key={red.id}
-                    className="border rounded-lg p-4 flex items-center justify-between bg-yellow-50"
+                    className="flex flex-col gap-2 rounded-lg border bg-yellow-50 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4"
                   >
                     <div>
                       <p className="font-medium">{red.children?.name || '孩子'}</p>
@@ -771,13 +773,13 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
                         onClick={() =>
                           handleApproveRedemption(red.id)
                         }
-                        className="bg-green-500 text-white px-3 py-1 rounded text-sm"
+                        className="bg-green-500 text-white px-3 py-1.5 rounded text-sm"
                       >
                         ✅ 确认
                       </button>
                       <button
                         onClick={() => handleRejectRedemption(red.id)}
-                        className="bg-red-500 text-white px-3 py-1 rounded text-sm"
+                        className="bg-red-500 text-white px-3 py-1.5 rounded text-sm"
                       >
                         ❌ 拒绝
                       </button>
@@ -792,14 +794,13 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
         {/* 今日统计 */}
         {selectedChildForDetail && (
           <>
-            <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <section className="grid grid-cols-1 gap-4 md:grid-cols-2 sm:gap-6">
               {/* 今日打卡 */}
-              <div className="bg-white p-6 rounded-lg shadow">
-                <h3 className="text-lg font-bold mb-4">📋 今日打卡 · {children.find(c => c.id === selectedChildForDetail)?.name}</h3>
+              <div className="bg-white p-4 sm:p-6 rounded-xl shadow">
+                <h3 className="mb-3 text-base font-bold sm:mb-4 sm:text-lg">📋 今日打卡 · {children.find(c => c.id === selectedChildForDetail)?.name}</h3>
                 {todayCheckIns.length === 0 ? (
-                  <div className="text-center py-8">
-                    <p className="text-gray-400">今日还没有打卡记录</p>
-                  </div>
+                  /* 空态与有数据时同样左对齐，且不再撑高：居中+大留白会让并列的两张卡看起来歪 */
+                  <p className="text-sm text-gray-400">今日还没有打卡记录</p>
                 ) : (
                   <div className="space-y-2">
                     {todayCheckIns.map((item, i) => (
@@ -816,12 +817,10 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
               </div>
 
               {/* 今日兑换 */}
-              <div className="bg-white p-6 rounded-lg shadow">
-                <h3 className="text-lg font-bold mb-4">🎁 今日兑换 · {children.find(c => c.id === selectedChildForDetail)?.name}</h3>
+              <div className="bg-white p-4 sm:p-6 rounded-xl shadow">
+                <h3 className="mb-3 text-base font-bold sm:mb-4 sm:text-lg">🎁 今日兑换 · {children.find(c => c.id === selectedChildForDetail)?.name}</h3>
                 {todayRedemptions.length === 0 ? (
-                  <div className="text-center py-8">
-                    <p className="text-gray-400">今日还没有兑换记录</p>
-                  </div>
+                  <p className="text-sm text-gray-400">今日还没有兑换记录</p>
                 ) : (
                   <div className="space-y-2">
                     {todayRedemptions.map((item, i) => (
@@ -844,7 +843,7 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
 
             {/* 热力图 */}
             <Heatmap
-              title="📅 近期打卡（点击或悬停查看详情）"
+              title="📅 近期打卡"
               data={heatmapData}
               month={heatmapMonth}
               onMonthChange={setHeatmapMonth}
@@ -854,7 +853,7 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
         )}
 
         {/* 任务管理 */}
-        <section className="bg-white p-6 rounded-lg shadow">
+        <section className="bg-white p-4 sm:p-6 rounded-xl shadow">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-bold">📋 任务管理</h3>
             <button
@@ -864,7 +863,7 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
                 const points = parseInt(prompt('积分：') || '0');
                 if (name) handleAddTask(name, category || '', points);
               }}
-              className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"
+              className="bg-blue-500 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-600"
             >
               + 添加任务
             </button>
@@ -874,18 +873,29 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
           ) : (
             <div className="space-y-2">
               {sortedTasks.map((t) => (
-                <div key={t.id} className="flex items-center justify-between border-b pb-2">
-                  <div className="flex items-center gap-3">
+                /*
+                  窄屏改成上下两层：任务名+标签在上，操作按钮独占一行。
+                  原先左右分栏时名称列被压到两三字宽，「阅读30分钟」这种被折成三行。
+                  sm 以上恢复左右分栏。
+                */
+                <div
+                  key={t.id}
+                  className="flex flex-col gap-2 border-b pb-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+                >
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <span className={`font-medium ${t.is_active ? 'text-gray-800' : 'text-gray-400 line-through'}`}>
                       {t.name}
                     </span>
-                    <span className="text-xs text-gray-500">{t.category}</span>
-                    <span className="text-xs text-green-600 font-bold">+{t.points}分</span>
-                    <span className={`text-xs ${t.is_active ? 'text-green-600' : 'text-red-500'}`}>
+                    <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-500">
+                      {t.category}
+                    </span>
+                    <span className="text-xs font-bold text-green-600">+{t.points}分</span>
+                    <span className={`text-[11px] ${t.is_active ? 'text-green-600' : 'text-red-500'}`}>
                       {t.is_active ? '运行中' : '已停用'}
                     </span>
                   </div>
-                  <div className="flex gap-1">
+                  {/* 按钮组不收缩，保证点击区不被名称挤瘦 */}
+                  <div className="flex flex-none gap-1.5">
                     {/* 代打卡：孩子当面完成任务时家长直接加分，不必等孩子申请 */}
                     {t.is_active && (
                       <button
@@ -898,7 +908,7 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
                             ? `给 ${children.find((c) => c.id === selectedChildForDetail)?.name} 记一次`
                             : '请先在上方选择一个孩子'
                         }
-                        className="text-xs bg-blue-500 text-white px-2 py-0.5 rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                        className="text-xs bg-blue-500 text-white px-2.5 py-1.5 rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
                       >
                         {checkingInTaskId === t.id ? '...' : '打卡'}
                         {(todayCountByTask[t.id] || 0) > 0 && (
@@ -918,7 +928,7 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
                           });
                         }
                       }}
-                      className="text-xs bg-yellow-500 text-white px-2 py-0.5 rounded hover:bg-yellow-600"
+                      className="text-xs bg-yellow-500 text-white px-2.5 py-1.5 rounded hover:bg-yellow-600"
                     >
                       编辑
                     </button>
@@ -930,7 +940,7 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
                             else { alert('已停用'); fetchTasks(); }
                           });
                         }}
-                        className="text-xs bg-gray-500 text-white px-2 py-0.5 rounded hover:bg-gray-600"
+                        className="text-xs bg-gray-500 text-white px-2.5 py-1.5 rounded hover:bg-gray-600"
                       >
                         停用
                       </button>
@@ -942,14 +952,14 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
                             else { alert('已启用'); fetchTasks(); }
                           });
                         }}
-                        className="text-xs bg-green-500 text-white px-2 py-0.5 rounded hover:bg-green-600"
+                        className="text-xs bg-green-500 text-white px-2.5 py-1.5 rounded hover:bg-green-600"
                       >
                         启用
                       </button>
                     )}
                     <button
                       onClick={() => handleDeleteTask(t.id)}
-                      className="text-xs bg-red-500 text-white px-2 py-0.5 rounded hover:bg-red-600"
+                      className="text-xs bg-red-500 text-white px-2.5 py-1.5 rounded hover:bg-red-600"
                     >
                       删除
                     </button>
@@ -961,7 +971,7 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
         </section>
 
         {/* 奖励管理 */}
-        <section className="bg-white p-6 rounded-lg shadow">
+        <section className="bg-white p-4 sm:p-6 rounded-xl shadow">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-bold">🎁 奖励管理</h3>
             <button
@@ -970,7 +980,7 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
                 const points = parseInt(prompt('所需积分：') || '0');
                 if (name) handleAddReward(name, points);
               }}
-              className="bg-purple-500 text-white px-3 py-1 rounded text-sm hover:bg-purple-600"
+              className="bg-purple-500 text-white px-3 py-1.5 rounded text-sm hover:bg-purple-600"
             >
               + 添加奖励
             </button>
@@ -980,17 +990,21 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
           ) : (
             <div className="space-y-2">
               {sortedRewards.map((r) => (
-                <div key={r.id} className="flex items-center justify-between border-b pb-2">
-                  <div className="flex items-center gap-3">
+                /* 与任务行同构：窄屏上下两层，避免「100元以内玩具」被折行 */
+                <div
+                  key={r.id}
+                  className="flex flex-col gap-2 border-b pb-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+                >
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <span className={`font-medium ${r.is_active ? 'text-gray-800' : 'text-gray-400 line-through'}`}>
                       {r.name}
                     </span>
-                    <span className="text-xs text-purple-600 font-bold">{r.points_cost}分</span>
-                    <span className={`text-xs ${r.is_active ? 'text-green-600' : 'text-red-500'}`}>
+                    <span className="text-xs font-bold text-purple-600">{r.points_cost}分</span>
+                    <span className={`text-[11px] ${r.is_active ? 'text-green-600' : 'text-red-500'}`}>
                       {r.is_active ? '可兑换' : '已停用'}
                     </span>
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex flex-none gap-1.5">
                     {/* 代兑换：奖励当面给出去时家长直接扣分，不必等孩子在自己端申请 */}
                     {r.is_active && (
                       <button
@@ -1001,7 +1015,7 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
                             ? `给 ${children.find((c) => c.id === selectedChildForDetail)?.name} 兑换，扣 ${r.points_cost} 分`
                             : '请先在上方选择一个孩子'
                         }
-                        className="text-xs bg-purple-500 text-white px-2 py-0.5 rounded hover:bg-purple-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                        className="text-xs bg-purple-500 text-white px-2.5 py-1.5 rounded hover:bg-purple-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
                       >
                         {redeemingRewardId === r.id ? '...' : '兑换'}
                       </button>
@@ -1012,28 +1026,28 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
                         const cost = parseInt(prompt('积分：', String(r.points_cost)) || '0');
                         if (name) handleEditReward(r.id, name, cost);
                       }}
-                      className="text-xs bg-yellow-500 text-white px-2 py-0.5 rounded hover:bg-yellow-600"
+                      className="text-xs bg-yellow-500 text-white px-2.5 py-1.5 rounded hover:bg-yellow-600"
                     >
                       编辑
                     </button>
                     {r.is_active ? (
                       <button
                         onClick={() => handleToggleReward(r.id, true)}
-                        className="text-xs bg-gray-500 text-white px-2 py-0.5 rounded hover:bg-gray-600"
+                        className="text-xs bg-gray-500 text-white px-2.5 py-1.5 rounded hover:bg-gray-600"
                       >
                         停用
                       </button>
                     ) : (
                       <button
                         onClick={() => handleToggleReward(r.id, false)}
-                        className="text-xs bg-green-500 text-white px-2 py-0.5 rounded hover:bg-green-600"
+                        className="text-xs bg-green-500 text-white px-2.5 py-1.5 rounded hover:bg-green-600"
                       >
                         启用
                       </button>
                     )}
                     <button
                       onClick={() => handleDeleteReward(r.id)}
-                      className="text-xs bg-red-500 text-white px-2 py-0.5 rounded hover:bg-red-600"
+                      className="text-xs bg-red-500 text-white px-2.5 py-1.5 rounded hover:bg-red-600"
                     >
                       删除
                     </button>

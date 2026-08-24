@@ -345,20 +345,25 @@ export default function ChildDashboard({ profile }: { profile: Profile }) {
 
   return (
     <div className="min-h-screen bg-purple-50">
-      <nav className="bg-white shadow p-4 flex justify-between items-center">
-        <h1 className="text-xl font-bold text-purple-600">🐾 我的宠物</h1>
-        <button onClick={handleLogout} className="bg-red-500 text-white px-3 py-1 rounded text-sm">
+      {/* 顶栏跟随家长端：窄屏收内边距、标题降一号，并吸顶方便随时退出 */}
+      <nav className="sticky top-0 z-30 flex items-center justify-between gap-2 bg-white px-3 py-3 shadow sm:px-4 sm:py-4">
+        <h1 className="truncate text-base font-bold text-purple-600 sm:text-xl">🐾 我的宠物</h1>
+        <button
+          onClick={handleLogout}
+          className="flex-none rounded bg-red-500 px-3 py-1.5 text-sm text-white active:bg-red-600"
+        >
           退出
         </button>
       </nav>
 
-      <div className="p-6 max-w-2xl mx-auto">
+      <div className="mx-auto max-w-2xl p-3 pb-10 sm:p-6">
         {/* 宠物展示 */}
         {child ? (
-          <div className="bg-white p-8 rounded-2xl shadow-lg text-center">
-            <div className="text-8xl mb-4">{petStage.emoji}</div>
-            <h2 className="text-2xl font-bold">{child.name}</h2>
-            <p className="text-gray-500">
+          <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-lg text-center">
+            {/* 窄屏 text-7xl：8xl 在 375px 屏上会把首屏几乎占满，看不到下面的任务 */}
+            <div className="mb-3 text-7xl sm:mb-4 sm:text-8xl">{petStage.emoji}</div>
+            <h2 className="text-xl font-bold sm:text-2xl">{child.name}</h2>
+            <p className="text-sm text-gray-500 sm:text-base">
               Lv.{petLevel} · {getPetLabel(child.pet_type)}「{petStage.name}」
             </p>
             <div className="w-full bg-gray-200 rounded-full h-4 mt-2">
@@ -377,7 +382,7 @@ export default function ChildDashboard({ profile }: { profile: Profile }) {
             </p>
           </div>
         ) : (
-          <div className="bg-white p-8 rounded-2xl shadow-lg text-center">
+          <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-lg text-center">
             <div className="text-6xl mb-3">🐾</div>
             <p className="text-gray-500">暂无宠物档案</p>
             <p className="text-sm text-gray-400 mt-2">{message || '请联系家长添加'}</p>
@@ -387,27 +392,31 @@ export default function ChildDashboard({ profile }: { profile: Profile }) {
         {child && (
           <>
             {/* 可打卡任务 */}
-            <div className="mt-6 bg-white p-6 rounded-lg shadow">
-              <h3 className="font-bold text-lg mb-4">📋 可打卡任务</h3>
+            <div className="mt-6 bg-white p-4 sm:p-6 rounded-xl shadow">
+              <h3 className="mb-3 text-base font-bold sm:mb-4 sm:text-lg">📋 可打卡任务</h3>
               {tasks.length === 0 ? (
                 <p className="text-gray-400 text-sm">暂无任务，让家长添加吧</p>
               ) : (
                 <div className="space-y-2">
                   {sortedTasks.map((task) => (
-                    <div key={task.id} className="flex items-center justify-between border-b pb-2">
-                      <div>
+                    /* 名称区可换行收缩，按钮区固定不缩，长任务名不会把按钮挤成竖条 */
+                    <div
+                      key={task.id}
+                      className="flex items-center justify-between gap-2 border-b pb-2"
+                    >
+                      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                         <span className="font-medium">{task.name}</span>
-                        <span className="text-xs bg-gray-100 px-2 py-0.5 rounded ml-2">
+                        <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-500">
                           {task.category}
                         </span>
-                        <span className="text-xs text-green-600 ml-2">+{task.points}分</span>
+                        <span className="text-xs font-bold text-green-600">+{task.points}分</span>
                       </div>
                       <button
                         onClick={() => handleRequestCheckIn(task.id, task.points)}
                         disabled={busy}
-                        className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600 disabled:bg-gray-400"
+                        className="flex-none rounded bg-blue-500 px-3 py-2 text-sm text-white active:bg-blue-600 disabled:bg-gray-400"
                       >
-                        申请打卡
+                        打卡
                       </button>
                     </div>
                   ))}
@@ -428,8 +437,8 @@ export default function ChildDashboard({ profile }: { profile: Profile }) {
             )}
 
             {/* 可兑换奖励 */}
-            <div className="mt-6 bg-white p-6 rounded-lg shadow">
-              <h3 className="font-bold text-lg mb-4">🎁 可兑换奖励</h3>
+            <div className="mt-6 bg-white p-4 sm:p-6 rounded-xl shadow">
+              <h3 className="mb-3 text-base font-bold sm:mb-4 sm:text-lg">🎁 可兑换奖励</h3>
               {rewards.length === 0 ? (
                 <p className="text-gray-400 text-sm">暂无可用奖励，去打卡赚积分吧！</p>
               ) : (
@@ -440,24 +449,27 @@ export default function ChildDashboard({ profile }: { profile: Profile }) {
                     const canApply = !isPending && affordable && !busy;
 
                     return (
-                      <div key={r.id} className="flex items-center justify-between border-b pb-2">
-                        <div>
+                      <div
+                        key={r.id}
+                        className="flex items-center justify-between gap-2 border-b pb-2"
+                      >
+                        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                           <span className="font-medium">{r.name}</span>
-                          <span className="text-xs text-gray-500 ml-2">需要 {r.points_cost} 分</span>
+                          <span className="text-xs text-gray-500">{r.points_cost} 分</span>
                           {isPending && (
-                            <span className="text-xs text-yellow-600 ml-2">⏳ 等待审批</span>
+                            <span className="text-[11px] text-yellow-600">⏳ 待审批</span>
                           )}
                         </div>
                         <button
                           onClick={() => handleApplyReward(r.id)}
                           disabled={!canApply}
-                          className={`px-3 py-1 rounded text-sm ${
+                          className={`flex-none rounded px-3 py-2 text-sm ${
                             canApply
-                              ? 'bg-purple-500 text-white hover:bg-purple-600'
-                              : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                              ? 'bg-purple-500 text-white active:bg-purple-600'
+                              : 'cursor-not-allowed bg-gray-300 text-gray-500'
                           }`}
                         >
-                          {isPending ? '等待审批' : affordable ? '申请兑换' : '积分不足'}
+                          {isPending ? '待审批' : affordable ? '兑换' : '分不够'}
                         </button>
                       </div>
                     );
@@ -478,12 +490,13 @@ export default function ChildDashboard({ profile }: { profile: Profile }) {
             </div>
 
             {/* 今日打卡 */}
-            <div className="mt-6 bg-white p-6 rounded-lg shadow">
-              <h2 className="text-xl font-bold mb-4">📋 今日打卡情况</h2>
+            <div className="mt-6 bg-white p-4 sm:p-6 rounded-xl shadow">
+              <h2 className="mb-3 text-base font-bold sm:mb-4 sm:text-xl">📋 今日打卡情况</h2>
               {todayCheckIns.length === 0 ? (
-                <div className="text-center py-4">
-                  <p className="text-gray-400">今日还没有打卡记录</p>
-                  <p className="text-xs text-gray-400 mt-1">快去申请打卡吧！</p>
+                /* 空态与有数据时同样左对齐，不再居中撑高 */
+                <div>
+                  <p className="text-sm text-gray-400">今日还没有打卡记录</p>
+                  <p className="mt-1 text-xs text-gray-400">快去申请打卡吧！</p>
                 </div>
               ) : (
                 <div>
@@ -509,12 +522,10 @@ export default function ChildDashboard({ profile }: { profile: Profile }) {
             </div>
 
             {/* 今日兑换 */}
-            <div className="mt-6 bg-white p-6 rounded-lg shadow">
-              <h2 className="text-xl font-bold mb-4">🎁 今日兑换情况</h2>
+            <div className="mt-6 bg-white p-4 sm:p-6 rounded-xl shadow">
+              <h2 className="mb-3 text-base font-bold sm:mb-4 sm:text-xl">🎁 今日兑换情况</h2>
               {todayRedemptions.length === 0 ? (
-                <div className="text-center py-4">
-                  <p className="text-gray-400">今日还没有兑换记录</p>
-                </div>
+                <p className="text-sm text-gray-400">今日还没有兑换记录</p>
               ) : (
                 <div>
                   <div className="space-y-2">

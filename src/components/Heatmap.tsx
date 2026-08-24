@@ -43,6 +43,9 @@ function HeatmapCell({
 }) {
   const [showDetail, setShowDetail] = useState(false);
 
+  // 深色格子上用浅色数字，否则 green-600/800 上的灰字完全看不见
+  const dayTextClass = count > 4 ? 'text-white/70' : 'text-gray-500/70';
+
   return (
     <div
       className={`aspect-square rounded ${cellColor(count)} transition-all hover:scale-110 hover:shadow-lg cursor-pointer relative ${
@@ -55,12 +58,14 @@ function HeatmapCell({
       onMouseEnter={() => setShowDetail(true)}
       onMouseLeave={() => setShowDetail(false)}
     >
-      <span className="absolute inset-0 flex items-center justify-center text-[8px] text-gray-600 opacity-30">
+      <span
+        className={`absolute inset-0 flex items-center justify-center text-[9px] sm:text-[10px] ${dayTextClass}`}
+      >
         {day}
       </span>
       {showDetail && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-800 text-white text-xs rounded whitespace-nowrap z-10 shadow-lg pointer-events-none">
-          {month + 1}月{day}日: {count} 次打卡
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 bg-gray-800 text-white text-[11px] rounded whitespace-nowrap z-20 shadow-lg pointer-events-none">
+          {month + 1}月{day}日 · {count} 次
         </div>
       )}
     </div>
@@ -97,30 +102,39 @@ export default function Heatmap({
   const activeDays = data.filter((d) => d.count > 0).length;
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow mb-6">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-bold">{title}</h2>
-        <div className="flex items-center gap-2">
+    <div className="bg-white p-4 sm:p-6 rounded-xl shadow mb-4 sm:mb-6">
+      {/*
+        窄屏下标题与月份导航必须分两行：原先同一行 flex justify-between，
+        标题一长就被压成两三字宽竖着折行，把卡片顶部撑出一大片空白。
+        sm 以上恢复同一行，宽屏不浪费竖向空间。
+      */}
+      <div className="mb-3 flex flex-col gap-2 sm:mb-4 sm:flex-row sm:items-center sm:justify-between">
+        <h2 className="text-base font-bold sm:text-xl">{title}</h2>
+        {/* 导航整组不许换行，否则窄屏下「今天」会孤零零掉到下一行 */}
+        <div className="flex flex-none items-center gap-1 sm:gap-2">
           <button
             onClick={() => shiftMonth(-1)}
-            className="px-2 py-1 border rounded text-sm hover:bg-gray-100"
+            className="rounded border px-2 py-1 text-sm hover:bg-gray-100"
             aria-label="上个月"
           >
             ◀
           </button>
-          <span className="text-sm font-medium min-w-[100px] text-center">
-            {year}年 {monthIndex + 1}月
+          {/* 窄屏省掉「年」省一截宽度，min-w 防止月份位数变化时按钮左右跳动 */}
+          <span className="min-w-[72px] text-center text-sm font-medium sm:min-w-[100px]">
+            <span className="hidden sm:inline">{year}年 </span>
+            <span className="sm:hidden">{year}.</span>
+            {monthIndex + 1}月
           </span>
           <button
             onClick={() => shiftMonth(1)}
-            className="px-2 py-1 border rounded text-sm hover:bg-gray-100"
+            className="rounded border px-2 py-1 text-sm hover:bg-gray-100"
             aria-label="下个月"
           >
             ▶
           </button>
           <button
             onClick={() => onMonthChange(new Date())}
-            className={`px-2 py-1 border rounded text-sm hover:bg-gray-100 ${ACCENT_TEXT[accent]}`}
+            className={`rounded border px-2 py-1 text-sm hover:bg-gray-100 ${ACCENT_TEXT[accent]}`}
           >
             今天
           </button>
@@ -131,10 +145,10 @@ export default function Heatmap({
         <p className="text-gray-500 text-center py-4">{emptyHint}</p>
       ) : (
         <div>
-          <div className="grid grid-cols-7 gap-1 mb-1 text-center text-xs text-gray-400">
+          <div className="grid grid-cols-7 gap-1 mb-1 text-center text-[11px] text-gray-400 sm:gap-1.5 sm:text-xs">
             <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
           </div>
-          <div className="grid grid-cols-7 gap-1">
+          <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
             {Array.from({ length: firstWeekday }).map((_, i) => (
               <div key={`empty-${i}`} className="aspect-square"></div>
             ))}
@@ -154,18 +168,20 @@ export default function Heatmap({
               );
             })}
           </div>
-          <div className="flex items-center gap-2 mt-3 text-xs text-gray-500">
+          {/* 图例格子在窄屏缩到 3.5，留出「点击方块看详情」的位置 */}
+          <div className="mt-3 flex items-center gap-1.5 text-[11px] text-gray-500 sm:gap-2 sm:text-xs">
             <span>少</span>
-            <div className="w-4 h-4 bg-gray-100 rounded border border-gray-200"></div>
-            <div className="w-4 h-4 bg-green-200 rounded"></div>
-            <div className="w-4 h-4 bg-green-400 rounded"></div>
-            <div className="w-4 h-4 bg-green-600 rounded"></div>
-            <div className="w-4 h-4 bg-green-800 rounded"></div>
+            <div className="h-3.5 w-3.5 rounded border border-gray-200 bg-gray-100 sm:h-4 sm:w-4"></div>
+            <div className="h-3.5 w-3.5 rounded bg-green-200 sm:h-4 sm:w-4"></div>
+            <div className="h-3.5 w-3.5 rounded bg-green-400 sm:h-4 sm:w-4"></div>
+            <div className="h-3.5 w-3.5 rounded bg-green-600 sm:h-4 sm:w-4"></div>
+            <div className="h-3.5 w-3.5 rounded bg-green-800 sm:h-4 sm:w-4"></div>
             <span>多</span>
-            <span className="ml-2 text-gray-400">（点击或悬停查看详情）</span>
+            {/* 触屏没有悬停，这里只提点击；原先标题里也写了一遍，已去掉重复 */}
+            <span className="ml-2 text-gray-400">点击方块看详情</span>
           </div>
-          <div className="mt-3 text-xs text-gray-400">
-            当月打卡总次数: {totalCount} 次 | 打卡天数: {activeDays} 天
+          <div className="mt-2 text-[11px] text-gray-400 sm:mt-3 sm:text-xs">
+            当月共 {totalCount} 次 · {activeDays} 天打卡
           </div>
         </div>
       )}
