@@ -27,6 +27,10 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
   const [rewards, setRewards] = useState<Reward[]>([]);
   const [heatmapData, setHeatmapData] = useState<HeatmapDatum[]>([]);
   const [heatmapMonth, setHeatmapMonth] = useState<Date>(new Date());
+  // 代打卡：按 task_id 统计所选孩子今日已打次数，供家长判断是否重复
+  const [todayCountByTask, setTodayCountByTask] = useState<Record<string, number>>({});
+  // 代打卡进行中的 task_id，防止连点重复加分
+  const [checkingInTaskId, setCheckingInTaskId] = useState<string>('');
 
   // 家长首次进入默认看第一个孩子：这是派生值，不需要用 effect 回写 state
   const selectedChildForDetail = selectedChildId || children[0]?.id || '';
@@ -144,6 +148,9 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
     }
 
     const taskMap: Record<string, { task_name: string; total_points: number; count: number }> = {};
+    // 同一份数据顺带按 task_id 聚合：代打卡按钮要显示「今日已打 N 次」，
+    // 而上面那份是按任务名聚合的，任务改名后无法与任务列表对应
+    const idCount: Record<string, number> = {};
 
     ((data ?? []) as CheckInRow[]).forEach((item) => {
       const taskName = item.tasks?.name || '未知任务';
@@ -155,6 +162,10 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
       } else {
         taskMap[taskName] = { task_name: taskName, total_points: points, count: 1 };
       }
+
+      if (item.task_id) {
+        idCount[item.task_id] = (idCount[item.task_id] || 0) + 1;
+      }
     });
 
     setTodayCheckIns(
@@ -164,6 +175,7 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
         count: info.count,
       }))
     );
+    setTodayCountByTask(idCount);
   }
 
   // 修复 2：使用本地日期过滤
@@ -280,6 +292,60 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
     } else {
       await fetchPendingRequests();
     }
+  }
+
+  /**
+   * 家长代打卡：孩子完成任务时家长就在旁边，直接加分，跳过「申请 → 审批」两步。
+   *
+   * 走 parent_check_in RPC 而不是「插一条 pending 申请再自动审批」：
+   * 后者会在 check_in_requests 里留下孩子从未提交过的假申请，污染申请流水。
+   * RPC 内部同样对 children 行加锁，与审批路径并发也不会丢分。
+   */
+  async function handleParentCheckIn(childId: string, taskId: string, taskName: string, points: number) {
+    if (!childId) {
+      alert('请先选择一个孩子');
+      return;
+    }
+    // 连点防护：RPC 没有唯一约束拦截，重复调用会真的重复加分
+    if (checkingInTaskId) return;
+
+    const already = todayCountByTask[taskId] || 0;
+    const childName = children.find((c) => c.id === childId)?.name || '孩子';
+    const tip = already > 0
+      ? `\n\n注意：${childName} 今天这个任务已经打过 ${already} 次了。`
+      : '';
+    if (!confirm(`给 ${childName} 记一次「${taskName}」，+${points} 分？${tip}`)) return;
+
+    setCheckingInTaskId(taskId);
+    const { data, error } = await supabase.rpc('parent_check_in', {
+      p_child_id: childId,
+      p_task_id: taskId,
+    });
+    setCheckingInTaskId('');
+
+    if (error) {
+      alert('❌ ' + error.message);
+      return;
+    }
+
+    const result = data as {
+      task_name: string;
+      points: number;
+      score_after: number;
+      level_before: number;
+      level_after: number;
+    };
+    const levelUp = result.level_after > result.level_before;
+    alert(
+      `✅ 已记录「${result.task_name}」，+${result.points} 分，当前 ${result.score_after} 分` +
+        (levelUp ? `\n🎉 宠物升级到 Lv.${result.level_after}！` : '')
+    );
+
+    await Promise.all([
+      fetchChildren(),
+      fetchTodayCheckIns(childId),
+      fetchHeatmapData(childId),
+    ]);
   }
 
   /**
@@ -543,6 +609,58 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
             {children.length === 0 && <p className="text-gray-500">暂无孩子档案，请先添加</p>}
           </div>
         </section>
+
+        {/* 帮孩子打卡：孩子就在旁边完成了任务，家长直接加分，不必等孩子申请 */}
+        {selectedChildForDetail && (
+          <section className="bg-white p-6 rounded-lg shadow">
+            <div className="flex justify-between items-center mb-1">
+              <h3 className="text-lg font-bold">
+                ⚡ 帮 {children.find((c) => c.id === selectedChildForDetail)?.name} 打卡
+              </h3>
+              <span className="text-xs text-gray-400">点一下立即加分</span>
+            </div>
+            <p className="text-sm text-gray-500 mb-4">
+              孩子当面完成了任务就直接点，不用等他自己申请。
+            </p>
+            {tasks.length === 0 ? (
+              <p className="text-gray-400 text-sm">暂无启用中的任务，先在下方添加任务</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {tasks.map((t) => {
+                  const doneCount = todayCountByTask[t.id] || 0;
+                  const isBusy = checkingInTaskId === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() =>
+                        handleParentCheckIn(selectedChildForDetail, t.id, t.name, t.points)
+                      }
+                      disabled={Boolean(checkingInTaskId)}
+                      className={`flex items-center justify-between border rounded-lg px-4 py-3 text-left transition ${
+                        checkingInTaskId
+                          ? 'opacity-60 cursor-not-allowed border-gray-200'
+                          : 'border-gray-200 hover:border-green-400 hover:bg-green-50'
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <div className="font-medium truncate">{t.name}</div>
+                        <div className="text-xs text-gray-500">
+                          {t.category}
+                          {doneCount > 0 && (
+                            <span className="text-orange-500 ml-2">今日已打 {doneCount} 次</span>
+                          )}
+                        </div>
+                      </div>
+                      <span className="text-green-600 font-bold whitespace-nowrap ml-3">
+                        {isBusy ? '...' : `+${t.points}`}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        )}
 
         {/* 待审批事项 */}
         <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">

@@ -66,6 +66,8 @@ export interface CheckInRequest {
 export interface CheckInRow {
   check_in_date: string;
   points: number | null;
+  /** 家长端代打卡需要按任务维度统计今日次数 */
+  task_id?: string | null;
   tasks?: { name: string } | null;
 }
 
