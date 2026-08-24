@@ -7,6 +7,12 @@ import ParentDashboard from './pages/ParentDashboard';
 import ChildDashboard from './pages/ChildDashboard';
 import './App.css';
 
+// Netlify 部署在根路径，GitHub Pages 的项目站点挂在 /<repo>/ 下。
+// import.meta.env.BASE_URL 由 vite 的 base 决定：Netlify 构建时是 './'，
+// 这种相对值不能当 router basename 用，只在以 '/' 开头时才生效。
+const rawBase = import.meta.env.BASE_URL;
+const routerBasename = rawBase.startsWith('/') ? rawBase.replace(/\/$/, '') : '';
+
 function App() {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
@@ -74,7 +80,7 @@ function App() {
   }
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={routerBasename}>
       <Routes>
         <Route path="/" element={session ? <Navigate to="/dashboard" /> : <LoginPage />} />
         <Route
