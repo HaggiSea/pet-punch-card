@@ -52,4 +52,6 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 )
 Button.displayName = "Button"
 
-export { Button, buttonVariants }
+// 仅导出组件：react-refresh 要求组件文件不混合导出常量。
+// buttonVariants 目前只在本文件内使用，无需对外暴露。
+export { Button }

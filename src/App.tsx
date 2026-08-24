@@ -1,18 +1,55 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { supabase } from './lib/supabaseClient';
+import type { Profile } from './lib/types';
 import ParentDashboard from './pages/ParentDashboard';
 import ChildDashboard from './pages/ChildDashboard';
 import './App.css';
 
 function App() {
   const [loading, setLoading] = useState(true);
-  const [session, setSession] = useState<any>(null);
-  const [profile, setProfile] = useState<any>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+
+  // 声明在 effect 之前，否则 effect 里引用的是尚未初始化的绑定
+  const fetchProfile = useCallback(async (userId: string) => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (error) {
+      console.error('❌ 获取 profile 失败:', error);
+      return;
+    }
+
+    // family_id 是本次重构新增的列，老账号为 null。
+    // 家长端所有查询都按 family_id 过滤，缺了会一条数据都查不到，
+    // 所以这里自愈：家长补自己的 id 作为家庭标识，孩子必须由家长绑定。
+    if (!data.family_id && data.role === 'parent') {
+      const { data: fixed, error: fixErr } = await supabase
+        .from('profiles')
+        .update({ family_id: userId })
+        .eq('id', userId)
+        .select()
+        .single();
+
+      if (fixErr) {
+        console.error('❌ 初始化家庭失败:', fixErr);
+        setProfile(data);
+      } else {
+        setProfile(fixed);
+      }
+      return;
+    }
+
+    setProfile(data);
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      console.log('🔍 获取 session:', session);
       setSession(session);
       if (session?.user) {
         fetchProfile(session.user.id);
@@ -21,7 +58,6 @@ function App() {
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      console.log('🔍 认证状态变化:', session);
       setSession(session);
       if (session?.user) {
         fetchProfile(session.user.id);
@@ -31,26 +67,7 @@ function App() {
     });
 
     return () => listener?.subscription.unsubscribe();
-  }, []);
-
-  async function fetchProfile(userId: string) {
-    console.log('🔍 正在获取 profile, userId:', userId);
-    
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-
-    if (error) {
-      console.error('❌ 获取 profile 失败:', error);
-    } else {
-      console.log('✅ profile 加载成功:', data);
-      setProfile(data);
-    }
-  }
-
-  console.log('🔍 App 状态:', { session, profile });
+  }, [fetchProfile]);
 
   if (loading) {
     return <div className="flex items-center justify-center min-h-screen text-lg">加载中...</div>;
@@ -95,39 +112,43 @@ function App() {
 
 // ========== 登录页面组件 ==========
 function LoginPage() {
-  const [users, setUsers] = useState<{ id: string; username: string }[]>([]);
-  const [selectedUser, setSelectedUser] = useState('');
+  // null = 尚未加载完成，用它表达加载态，省掉一个同步 setState 的 loading 变量
+  const [users, setUsers] = useState<{ id: string; username: string }[] | null>(null);
+  const [pickedUser, setPickedUser] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'parent' | 'child'>('parent');
   const [error, setError] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
-
-  useEffect(() => {
-    if (!isSignUp) {
-      loadUsers();
-    }
-  }, [role]);
 
   async function loadUsers() {
-    setIsLoadingUsers(true);
     const { data, error } = await supabase
       .from('profiles')
       .select('id, username')
       .eq('role', role);
     if (error) {
       console.error('获取用户列表失败:', error);
+      setUsers([]);
     } else {
       setUsers(data || []);
-      if (data && data.length > 0) {
-        setSelectedUser(data[0].id);
-      } else {
-        setSelectedUser('');
-      }
     }
-    setIsLoadingUsers(false);
+    setPickedUser('');
   }
+
+  useEffect(() => {
+    if (!isSignUp) {
+      // loadUsers 的 setState 全部发生在 await 之后，不是同步级联渲染；
+      // set-state-in-effect 识别不了 async 边界，此处为误报。
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      loadUsers();
+    }
+    // loadUsers 依赖 role，随 role/isSignUp 变化重新拉取
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSignUp, role]);
+
+  const isLoadingUsers = users === null;
+  // 未手动选择时默认第一个账号：派生值，避免 effect 回写 state
+  const selectedUser = pickedUser || users?.[0]?.id || '';
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -138,7 +159,8 @@ function LoginPage() {
       const form = e.currentTarget;
       const formData = new FormData(form);
       const newUsername = formData.get('newUsername') as string;
-      
+      const familyCode = ((formData.get('familyCode') as string) || '').trim();
+
       if (!newUsername || newUsername.trim().length === 0) {
         setError('请输入用户名');
         setLoading(false);
@@ -151,23 +173,58 @@ function LoginPage() {
         return;
       }
 
+      // 孩子必须归入某个家庭：数据库触发器按家庭代码（= 家长用户名）查家长，
+      // 这里先校验一次，避免注册成功后才发现挂错家庭。
+      if (role === 'child') {
+        if (!familyCode) {
+          setError('请输入家庭代码（家长的用户名）');
+          setLoading(false);
+          return;
+        }
+
+        const { data: parent, error: parentError } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('role', 'parent')
+          .ilike('username', familyCode)
+          .maybeSingle();
+
+        if (parentError) {
+          setError('校验家庭代码失败：' + parentError.message);
+          setLoading(false);
+          return;
+        }
+
+        if (!parent) {
+          setError(`找不到家长账号「${familyCode}」，请向家长确认用户名`);
+          setLoading(false);
+          return;
+        }
+      }
+
       const email = newUsername.trim() + '@' + role + '.pet';
-      
-      const { error: signUpError } = await supabase.auth.signUp({ 
-        email, 
+
+      const { error: signUpError } = await supabase.auth.signUp({
+        email,
         password,
         options: {
-          data: { 
+          data: {
             username: newUsername.trim(),
-            role: role 
+            role: role,
+            // 家长自成一家，family_code 仅对孩子有意义
+            ...(role === 'child' ? { family_code: familyCode } : {}),
           }
         }
       });
-      
+
       if (signUpError) {
         setError(signUpError.message);
       } else {
-        alert('✅ 注册成功！请使用该角色登录。');
+        alert(
+          role === 'child'
+            ? '✅ 注册成功！请让家长在家长端点「+ 添加孩子」创建宠物档案。'
+            : '✅ 注册成功！请使用该角色登录。'
+        );
         setIsSignUp(false);
         setPassword('');
         loadUsers();
@@ -188,7 +245,7 @@ function LoginPage() {
       return;
     }
 
-    const user = users.find(u => u.id === selectedUser);
+    const user = users?.find(u => u.id === selectedUser);
     if (!user) {
       setError('账号不存在');
       setLoading(false);
@@ -241,17 +298,17 @@ function LoginPage() {
               <select
                 className="w-full p-2 border rounded"
                 value={selectedUser}
-                onChange={(e) => setSelectedUser(e.target.value)}
+                onChange={(e) => setPickedUser(e.target.value)}
                 disabled={isLoadingUsers}
               >
                 <option value="">-- 请选择账号 --</option>
-                {users.map(u => (
+                {(users ?? []).map(u => (
                   <option key={u.id} value={u.id}>
                     {u.username}
                   </option>
                 ))}
               </select>
-              {users.length === 0 && !isLoadingUsers && (
+              {users?.length === 0 && (
                 <p className="text-xs text-gray-400 mt-1">
                   暂无 {role === 'parent' ? '家长' : '孩子'} 账号，请先注册
                 </p>
@@ -267,6 +324,22 @@ function LoginPage() {
               className="w-full p-2 border rounded mb-3"
               required
             />
+          )}
+
+          {/* 孩子注册必须指明加入哪个家庭，代码就是家长的用户名 */}
+          {isSignUp && role === 'child' && (
+            <div className="mb-3">
+              <input
+                type="text"
+                name="familyCode"
+                placeholder="家庭代码（家长的用户名）"
+                className="w-full p-2 border rounded"
+                required
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                问家长他登录时用的用户名，填在这里就能加入同一个家庭
+              </p>
+            </div>
           )}
 
           <input
@@ -295,8 +368,8 @@ function LoginPage() {
               setIsSignUp(!isSignUp);
               setError('');
               if (!isSignUp) {
-                setUsers([]);
-                setSelectedUser('');
+                setUsers(null);
+                setPickedUser('');
               } else {
                 loadUsers();
               }
