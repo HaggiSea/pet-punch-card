@@ -14,7 +14,8 @@ import type {
   Redemption,
 } from '../lib/types';
 import Heatmap from '../components/Heatmap';
-import { getPetEmoji, PET_TYPES } from '../lib/pets';
+import { getPetStage, PET_KINDS, PET_TYPES } from '../lib/pets';
+import { levelForScore, MIN_LEVEL } from '../lib/levels';
 
 export default function ParentDashboard({ profile }: { profile: Profile }) {
   const [children, setChildren] = useState<Child[]>([]);
@@ -31,6 +32,8 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
   const [todayCountByTask, setTodayCountByTask] = useState<Record<string, number>>({});
   // 代打卡进行中的 task_id，防止连点重复加分
   const [checkingInTaskId, setCheckingInTaskId] = useState<string>('');
+  // 代兑换进行中的 reward_id，防止连点重复扣分
+  const [redeemingRewardId, setRedeemingRewardId] = useState<string>('');
 
   // 家长首次进入默认看第一个孩子：这是派生值，不需要用 effect 回写 state
   const selectedChildForDetail = selectedChildId || children[0]?.id || '';
@@ -262,13 +265,14 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
     const result = data as {
       points: number;
       score_after: number;
-      level_before: number;
-      level_after: number;
     };
-    const levelUp = result.level_after > result.level_before;
+    // 等级不用 RPC 返回的 level_before/level_after：那是 DB 函数算的，
+    // 与前端阈值可能不同步（例如迁移还没执行时它仍是 0 基）。按积分现算最可靠。
+    const levelAfter = levelForScore(result.score_after);
+    const levelUp = levelAfter > levelForScore(result.score_after - result.points);
     alert(
       `✅ 已通过，+${result.points} 分，当前 ${result.score_after} 分` +
-        (levelUp ? `\n🎉 宠物升级到 Lv.${result.level_after}！` : '')
+        (levelUp ? `\n🎉 宠物升级到 Lv.${levelAfter}！` : '')
     );
 
     await Promise.all([fetchPendingRequests(), fetchChildren()]);
@@ -332,13 +336,13 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
       task_name: string;
       points: number;
       score_after: number;
-      level_before: number;
-      level_after: number;
     };
-    const levelUp = result.level_after > result.level_before;
+    // 同上：等级按积分现算，不信 RPC 返回的 level_*
+    const levelAfter = levelForScore(result.score_after);
+    const levelUp = levelAfter > levelForScore(result.score_after - result.points);
     alert(
       `✅ 已记录「${result.task_name}」，+${result.points} 分，当前 ${result.score_after} 分` +
-        (levelUp ? `\n🎉 宠物升级到 Lv.${result.level_after}！` : '')
+        (levelUp ? `\n🎉 宠物升级到 Lv.${levelAfter}！` : '')
     );
 
     await Promise.all([
@@ -431,7 +435,10 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
     const name = prompt('宠物主人的名字：', target.username);
     if (!name || !name.trim()) return;
 
-    const petList = PET_TYPES.map((t, i) => `${i + 1}. ${t}`).join('\n');
+    // 列出中文名 + 成长路线，家长选之前能看到宠物会长成什么样
+    const petList = PET_KINDS.map(
+      (k, i) => `${i + 1}. ${k.label}  ${k.stages.map(s => s.emoji).join(' → ')}`
+    ).join('\n');
     const petPick = parseInt(prompt(`选择宠物种类：\n${petList}`) || '1');
     const petType = PET_TYPES[isNaN(petPick) ? 0 : petPick - 1] || PET_TYPES[0];
 
@@ -441,7 +448,7 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
       name: name.trim(),
       pet_type: petType,
       total_score: 0,
-      level: 0,
+      level: MIN_LEVEL,
     });
 
     if (error) {
@@ -533,6 +540,61 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
     }
   }
 
+  /**
+   * 家长代兑换：奖励当面给出去时直接扣分，跳过「孩子申请 → 家长审批」两步。
+   *
+   * 走 parent_redemption RPC 而不是「插一条 pending 流水再自动确认」：
+   * 后者会在 redemptions 里留下孩子从未提交过的申请记录，污染申请语义。
+   * RPC 内部对 children 行加锁，与审批路径并发也不会扣成负分。
+   */
+  async function handleParentRedeem(rewardId: string, rewardName: string, pointsCost: number) {
+    const childId = selectedChildForDetail;
+    if (!childId) {
+      alert('请先在上方选择一个孩子');
+      return;
+    }
+    // 连点防护：RPC 不做幂等，重复调用会真的重复扣分
+    if (redeemingRewardId) return;
+
+    const childObj = children.find((c) => c.id === childId);
+    const childName = childObj?.name || '孩子';
+    const score = childObj?.total_score ?? 0;
+
+    if (score < pointsCost) {
+      alert(`${childName} 当前 ${score} 分，兑换「${rewardName}」需要 ${pointsCost} 分，还差 ${pointsCost - score} 分。`);
+      return;
+    }
+    if (!confirm(`给 ${childName} 兑换「${rewardName}」，扣 ${pointsCost} 分？\n\n当前 ${score} 分，兑换后剩 ${score - pointsCost} 分。`)) return;
+
+    setRedeemingRewardId(rewardId);
+    const { data, error } = await supabase.rpc('parent_redemption', {
+      p_child_id: childId,
+      p_reward_id: rewardId,
+    });
+    setRedeemingRewardId('');
+
+    if (error) {
+      alert('❌ ' + error.message);
+      return;
+    }
+
+    const result = data as {
+      child_name: string;
+      reward_name: string;
+      points_cost: number;
+      score_after: number;
+    };
+    // 同上：等级按积分现算，不信 RPC 返回的 level_*
+    const levelAfter = levelForScore(result.score_after);
+    const levelDown = levelAfter < levelForScore(result.score_after + result.points_cost);
+    alert(
+      `🎁 已为 ${result.child_name} 兑换「${result.reward_name}」，扣 ${result.points_cost} 分，剩余 ${result.score_after} 分` +
+        (levelDown ? `\n宠物等级回落到 Lv.${levelAfter}` : '')
+    );
+
+    await Promise.all([fetchChildren(), fetchTodayRedemptions(childId)]);
+  }
+
   async function handleDeleteReward(id: string) {
     if (!confirm('确定要永久删除这个奖励？')) return;
     const { error } = await supabase.from('rewards').delete().eq('id', id);
@@ -544,6 +606,13 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
     }
   }
 
+  // 必须等 signOut 落盘再跳转：不 await 的话页面已经开始卸载，
+  // localStorage 里的 session 没清掉，重新加载后 getSession() 又把人送回 /dashboard
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    window.location.href = '/';
+  }
+
   // --- 渲染 ---
 
   if (!profile?.id) {
@@ -551,6 +620,9 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <p className="text-gray-500">用户信息加载失败，请重新登录</p>
+          <button onClick={handleLogout} className="mt-2 text-blue-500 underline">
+            重新登录
+          </button>
         </div>
       </div>
     );
@@ -563,10 +635,7 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
         <div className="flex items-center gap-4 text-sm">
           <span className="text-gray-500">家庭：{profile.username}</span>
           <button
-            onClick={() => {
-              supabase.auth.signOut();
-              window.location.href = '/';
-            }}
+            onClick={handleLogout}
             className="bg-red-500 text-white px-3 py-1 rounded text-sm"
           >
             退出
@@ -598,10 +667,16 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className="text-4xl">{getPetEmoji(c.pet_type, c.level)}</div>
+                  <div className="text-4xl">
+                    {getPetStage(c.pet_type, levelForScore(c.total_score)).emoji}
+                  </div>
                   <div>
                     <h3 className="font-bold">{c.name}</h3>
-                    <p className="text-sm text-gray-500">Lv.{c.level} · {c.total_score} 分</p>
+                    <p className="text-sm text-gray-500">
+                      Lv.{levelForScore(c.total_score)}{' '}
+                      {getPetStage(c.pet_type, levelForScore(c.total_score)).name} ·{' '}
+                      {c.total_score} 分
+                    </p>
                   </div>
                 </div>
               </button>
@@ -911,6 +986,21 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
                     </span>
                   </div>
                   <div className="flex gap-1">
+                    {/* 代兑换：奖励当面给出去时家长直接扣分，不必等孩子在自己端申请 */}
+                    {r.is_active && (
+                      <button
+                        onClick={() => handleParentRedeem(r.id, r.name, r.points_cost)}
+                        disabled={Boolean(redeemingRewardId) || !selectedChildForDetail}
+                        title={
+                          selectedChildForDetail
+                            ? `给 ${children.find((c) => c.id === selectedChildForDetail)?.name} 兑换，扣 ${r.points_cost} 分`
+                            : '请先在上方选择一个孩子'
+                        }
+                        className="text-xs bg-purple-500 text-white px-2 py-0.5 rounded hover:bg-purple-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                      >
+                        {redeemingRewardId === r.id ? '...' : '兑换'}
+                      </button>
+                    )}
                     <button
                       onClick={() => {
                         const name = prompt('名称：', r.name);

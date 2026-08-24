@@ -2,7 +2,7 @@ import { supabase } from '../lib/supabaseClient';
 import { useEffect, useState } from 'react';
 import { todayLocal, monthStart, monthEnd, startOfTodayIso } from '../lib/dates';
 import { levelProgress } from '../lib/levels';
-import { getPetEmoji } from '../lib/pets';
+import { getPetLabel, getPetStage } from '../lib/pets';
 import type {
   Profile,
   Child,
@@ -311,6 +311,12 @@ export default function ChildDashboard({ profile }: { profile: Profile }) {
 
   // 修复 4：等级与进度统一取自 lib/levels，不再在页面里硬编码阈值
   const progress = levelProgress(child?.total_score || 0);
+  // 等级一律由积分现算，不读 children.level 列。
+  // 那一列是 DB 冗余存储，历史上是 0 基（Lv.0），迁移未执行或将来漏刷时会显示错等级；
+  // 积分才是唯一真相，派生值就地算不会有第二份真相。
+  const petLevel = progress.level;
+  // 形象按等级取。宠物档案还没建好时给个占位，下面 child 为空的分支不会用到它
+  const petStage = getPetStage(child?.pet_type || '', petLevel);
 
   if (isLoading) {
     return (
@@ -346,9 +352,11 @@ export default function ChildDashboard({ profile }: { profile: Profile }) {
         {/* 宠物展示 */}
         {child ? (
           <div className="bg-white p-8 rounded-2xl shadow-lg text-center">
-            <div className="text-8xl mb-4">{getPetEmoji(child.pet_type, child.level)}</div>
+            <div className="text-8xl mb-4">{petStage.emoji}</div>
             <h2 className="text-2xl font-bold">{child.name}</h2>
-            <p className="text-gray-500">等级 Lv.{child.level}</p>
+            <p className="text-gray-500">
+              Lv.{petLevel} · {getPetLabel(child.pet_type)}「{petStage.name}」
+            </p>
             <div className="w-full bg-gray-200 rounded-full h-4 mt-2">
               <div
                 className="bg-purple-500 h-4 rounded-full transition-all"
@@ -358,13 +366,15 @@ export default function ChildDashboard({ profile }: { profile: Profile }) {
             <p className="mt-2 text-sm text-gray-600">当前积分：{child.total_score} 分</p>
             <p className="text-xs text-gray-400">
               {progress.isMaxLevel
-                ? '已达到最高等级 🎉'
-                : `再得 ${progress.pointsToNext} 分升到 Lv.${child.level + 1}`}
+                ? '已经是最终形态啦 🎉'
+                : `再得 ${progress.pointsToNext} 分升到 Lv.${progress.nextLevel}` +
+                  `，变成 ${getPetStage(child.pet_type, progress.nextLevel!).emoji} ` +
+                  getPetStage(child.pet_type, progress.nextLevel!).name}
             </p>
           </div>
         ) : (
           <div className="bg-white p-8 rounded-2xl shadow-lg text-center">
-            <div className="text-6xl mb-3">🥚</div>
+            <div className="text-6xl mb-3">🐾</div>
             <p className="text-gray-500">暂无宠物档案</p>
             <p className="text-sm text-gray-400 mt-2">{message || '请联系家长添加'}</p>
           </div>
