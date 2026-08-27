@@ -89,6 +89,8 @@ export default function ChildDashboard({ profile }: { profile: Profile }) {
   }
 
   // 修复 1：奖励目录读 rewards 表，不再从 redemptions 里筛
+  // 已取消「停用」概念：奖励要么存在要么被删除，因此不再按 is_active 过滤，
+  // 保证家长后台看到的条目和孩子端完全一致。
   async function fetchRewards() {
     if (!child) return;
 
@@ -96,7 +98,6 @@ export default function ChildDashboard({ profile }: { profile: Profile }) {
       .from('rewards')
       .select('*')
       .eq('family_id', child.family_id)
-      .eq('is_active', true)
       .or(`child_id.is.null,child_id.eq.${child.id}`)
       .order('points_cost', { ascending: true });
 
@@ -131,7 +132,7 @@ export default function ChildDashboard({ profile }: { profile: Profile }) {
     );
   }
 
-  // 修复 3：任务按家庭过滤
+  // 修复 3：任务按家庭过滤（同奖励，不再按 is_active 过滤）
   async function fetchTasks() {
     if (!child) return;
 
@@ -139,7 +140,6 @@ export default function ChildDashboard({ profile }: { profile: Profile }) {
       .from('tasks')
       .select('*')
       .eq('family_id', child.family_id)
-      .eq('is_active', true)
       .order('name', { ascending: true });
 
     if (error) {

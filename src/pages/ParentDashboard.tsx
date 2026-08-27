@@ -79,12 +79,13 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
   }
 
   // 修复 3：按 family_id 过滤，避免看到别人家任务
+  // 不再按 is_active 过滤：任务只有「存在」和「删除」两种状态，
+  // 过滤会让停用过的任务在后台彻底消失，家长无法确认它还在不在。
   async function fetchTasks() {
     const { data, error } = await supabase
       .from('tasks')
       .select('*')
       .eq('family_id', profile.family_id)
-      .eq('is_active', true)
       .order('name', { ascending: true });
 
     if (error) {
@@ -125,13 +126,12 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
     }
   }
 
-  // 修复 1：只加载 active 的奖励（不再混用 status 字段）
+  // 修复 1：奖励目录读 rewards 表（不再混用 status 字段）；同任务，不按 is_active 过滤
   async function fetchRewards() {
     const { data, error } = await supabase
       .from('rewards')
       .select('*')
       .eq('family_id', profile.family_id)
-      .eq('is_active', true)
       .order('points_cost', { ascending: true });
 
     if (error) {
@@ -518,16 +518,6 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
     }
   }
 
-  async function handleToggleReward(id: string, active: boolean) {
-    const { error } = await supabase.from('rewards').update({ is_active: !active }).eq('id', id);
-    if (error) {
-      alert('操作失败: ' + error.message);
-    } else {
-      alert(`✅ 已${active ? '停用' : '启用'}奖励`);
-      await fetchRewards();
-    }
-  }
-
   async function handleEditReward(id: string, name: string, pointsCost: number) {
     if (!name.trim() || !pointsCost || pointsCost <= 0) {
       alert('请填写有效名称和积分');
@@ -883,39 +873,32 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
                   className="flex flex-col gap-2 border-b pb-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
                 >
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className={`font-medium ${t.is_active ? 'text-gray-800' : 'text-gray-400 line-through'}`}>
-                      {t.name}
-                    </span>
+                    <span className="font-medium text-gray-800">{t.name}</span>
                     <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] text-gray-500">
                       {t.category}
                     </span>
                     <span className="text-xs font-bold text-green-600">+{t.points}分</span>
-                    <span className={`text-[11px] ${t.is_active ? 'text-green-600' : 'text-red-500'}`}>
-                      {t.is_active ? '运行中' : '已停用'}
-                    </span>
                   </div>
                   {/* 按钮组不收缩，保证点击区不被名称挤瘦 */}
                   <div className="flex flex-none gap-1.5">
                     {/* 代打卡：孩子当面完成任务时家长直接加分，不必等孩子申请 */}
-                    {t.is_active && (
-                      <button
-                        onClick={() =>
-                          handleParentCheckIn(selectedChildForDetail, t.id, t.name, t.points)
-                        }
-                        disabled={Boolean(checkingInTaskId) || !selectedChildForDetail}
-                        title={
-                          selectedChildForDetail
-                            ? `给 ${children.find((c) => c.id === selectedChildForDetail)?.name} 记一次`
-                            : '请先在上方选择一个孩子'
-                        }
-                        className="text-xs bg-blue-500 text-white px-2.5 py-1.5 rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                      >
-                        {checkingInTaskId === t.id ? '...' : '打卡'}
-                        {(todayCountByTask[t.id] || 0) > 0 && (
-                          <span className="ml-1 opacity-80">({todayCountByTask[t.id]})</span>
-                        )}
-                      </button>
-                    )}
+                    <button
+                      onClick={() =>
+                        handleParentCheckIn(selectedChildForDetail, t.id, t.name, t.points)
+                      }
+                      disabled={Boolean(checkingInTaskId) || !selectedChildForDetail}
+                      title={
+                        selectedChildForDetail
+                          ? `给 ${children.find((c) => c.id === selectedChildForDetail)?.name} 记一次`
+                          : '请先在上方选择一个孩子'
+                      }
+                      className="text-xs bg-blue-500 text-white px-2.5 py-1.5 rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                    >
+                      {checkingInTaskId === t.id ? '...' : '打卡'}
+                      {(todayCountByTask[t.id] || 0) > 0 && (
+                        <span className="ml-1 opacity-80">({todayCountByTask[t.id]})</span>
+                      )}
+                    </button>
                     <button
                       onClick={() => {
                         const name = prompt('任务名称：', t.name);
@@ -932,31 +915,6 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
                     >
                       编辑
                     </button>
-                    {t.is_active ? (
-                      <button
-                        onClick={() => {
-                          supabase.from('tasks').update({ is_active: false }).eq('id', t.id).then(({ error }) => {
-                            if (error) alert('操作失败: ' + error.message);
-                            else { alert('已停用'); fetchTasks(); }
-                          });
-                        }}
-                        className="text-xs bg-gray-500 text-white px-2.5 py-1.5 rounded hover:bg-gray-600"
-                      >
-                        停用
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => {
-                          supabase.from('tasks').update({ is_active: true }).eq('id', t.id).then(({ error }) => {
-                            if (error) alert('操作失败: ' + error.message);
-                            else { alert('已启用'); fetchTasks(); }
-                          });
-                        }}
-                        className="text-xs bg-green-500 text-white px-2.5 py-1.5 rounded hover:bg-green-600"
-                      >
-                        启用
-                      </button>
-                    )}
                     <button
                       onClick={() => handleDeleteTask(t.id)}
                       className="text-xs bg-red-500 text-white px-2.5 py-1.5 rounded hover:bg-red-600"
@@ -996,30 +954,23 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
                   className="flex flex-col gap-2 border-b pb-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
                 >
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className={`font-medium ${r.is_active ? 'text-gray-800' : 'text-gray-400 line-through'}`}>
-                      {r.name}
-                    </span>
+                    <span className="font-medium text-gray-800">{r.name}</span>
                     <span className="text-xs font-bold text-purple-600">{r.points_cost}分</span>
-                    <span className={`text-[11px] ${r.is_active ? 'text-green-600' : 'text-red-500'}`}>
-                      {r.is_active ? '可兑换' : '已停用'}
-                    </span>
                   </div>
                   <div className="flex flex-none gap-1.5">
                     {/* 代兑换：奖励当面给出去时家长直接扣分，不必等孩子在自己端申请 */}
-                    {r.is_active && (
-                      <button
-                        onClick={() => handleParentRedeem(r.id, r.name, r.points_cost)}
-                        disabled={Boolean(redeemingRewardId) || !selectedChildForDetail}
-                        title={
-                          selectedChildForDetail
-                            ? `给 ${children.find((c) => c.id === selectedChildForDetail)?.name} 兑换，扣 ${r.points_cost} 分`
-                            : '请先在上方选择一个孩子'
-                        }
-                        className="text-xs bg-purple-500 text-white px-2.5 py-1.5 rounded hover:bg-purple-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                      >
-                        {redeemingRewardId === r.id ? '...' : '兑换'}
-                      </button>
-                    )}
+                    <button
+                      onClick={() => handleParentRedeem(r.id, r.name, r.points_cost)}
+                      disabled={Boolean(redeemingRewardId) || !selectedChildForDetail}
+                      title={
+                        selectedChildForDetail
+                          ? `给 ${children.find((c) => c.id === selectedChildForDetail)?.name} 兑换，扣 ${r.points_cost} 分`
+                          : '请先在上方选择一个孩子'
+                      }
+                      className="text-xs bg-purple-500 text-white px-2.5 py-1.5 rounded hover:bg-purple-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                    >
+                      {redeemingRewardId === r.id ? '...' : '兑换'}
+                    </button>
                     <button
                       onClick={() => {
                         const name = prompt('名称：', r.name);
@@ -1030,21 +981,6 @@ export default function ParentDashboard({ profile }: { profile: Profile }) {
                     >
                       编辑
                     </button>
-                    {r.is_active ? (
-                      <button
-                        onClick={() => handleToggleReward(r.id, true)}
-                        className="text-xs bg-gray-500 text-white px-2.5 py-1.5 rounded hover:bg-gray-600"
-                      >
-                        停用
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => handleToggleReward(r.id, false)}
-                        className="text-xs bg-green-500 text-white px-2.5 py-1.5 rounded hover:bg-green-600"
-                      >
-                        启用
-                      </button>
-                    )}
                     <button
                       onClick={() => handleDeleteReward(r.id)}
                       className="text-xs bg-red-500 text-white px-2.5 py-1.5 rounded hover:bg-red-600"
